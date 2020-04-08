@@ -1,5 +1,10 @@
-#include <Open3D/Geometry/RGBDImage.h>
-#include <Open3D/Visualization/Utility/DrawGeometry.h>
+/******************************************************************************
+* File:             main.cpp
+*
+* Author:           Akash Sharma
+* Created:          04/07/20
+* Description:      main implementation
+*****************************************************************************/
 #include <iostream>
 #include <memory>
 #include <thread>
@@ -11,6 +16,7 @@
 #include <Open3D/Open3D.h>
 
 #include "dataset.h"
+#include "frame.h"
 
 static constexpr auto USAGE =
   R"(Object SLAM Pipeline
@@ -40,12 +46,17 @@ int main(int argc, char *argv[])
 
     oslam::RGBDdataset rgbd_dataset = oslam::RGBDdataset(dataset_path);
 
+    std::shared_ptr<oslam::Frame> p_prev_frame;
     for (std::size_t i = 0; i < rgbd_dataset.size(); i++) {
-        oslam::RGBDdata data = rgbd_dataset.get_data(0);
-        auto rgbd_image =
-          open3d::geometry::RGBDImage::CreateFromRedwoodFormat(data.color, data.depth, false);
-        auto pcd =
-          open3d::geometry::PointCloud::CreateFromRGBDImage(*rgbd_image, rgbd_dataset.intrinsic);
-        open3d::visualization::DrawGeometries({ pcd }, "PointCloud visualization");
+        std::shared_ptr<oslam::Frame> p_current_frame(new oslam::Frame(i, rgbd_dataset.get_data(i), rgbd_dataset.intrinsic));
+
+        std::shared_ptr<oslam::Odometry> p_odometry = p_current_frame->odometry(p_prev_frame);
+
+        if(p_prev_frame)
+            p_current_frame->set_pose(p_prev_frame->get_pose() * p_odometry->transform);
+        spdlog::debug("Frame current pose: \n{}\n", p_current_frame->get_pose());
+        p_current_frame->visualize();
+
+        p_prev_frame = p_current_frame;
     }
 }

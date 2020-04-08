@@ -3,8 +3,7 @@ find_package(Open3D REQUIRED)
 find_package(Boost REQUIRED)
 find_package(Eigen3 REQUIRED)
 
-
-add_executable(reconstruct main.cpp dataset.cpp)
+add_executable(reconstruct main.cpp dataset.cpp frame.cpp)
 target_link_libraries(
   reconstruct PRIVATE project_options project_warnings CONAN_PKG::docopt.cpp
   CONAN_PKG::fmt CONAN_PKG::spdlog Boost::filesystem Eigen3::Eigen Open3D::Open3D ${CMAKE_DL_LIBS}

@@ -1,7 +1,13 @@
+/******************************************************************************
+ * File:             dataset.h
+ *
+ * Author:           Akash Sharma
+ * Created:          04/07/20
+ * Description:      RGBDdataset header: Reads the dataset from folder
+ *****************************************************************************/
 #ifndef OSLAM_DATASET_H
 #define OSLAM_DATASET_H
 
-#include <c++/7/bits/c++config.h>
 #include <string>
 #include <vector>
 
@@ -27,13 +33,14 @@ struct RGBDdata
 class RGBDdataset
 {
   public:
-    RGBDdataset(const std::string &r_root_dir);
+    explicit RGBDdataset(std::string root_dir);
     virtual ~RGBDdataset();
 
-    inline std::size_t size(void) { return m_size;}
-    RGBDdata get_data(unsigned int index);
+    inline std::size_t size(void) const { return m_size; }
+    RGBDdata get_data(std::size_t index);
 
     open3d::camera::PinholeCameraIntrinsic intrinsic;
+
   private:
     fs::path m_root_dir;
     std::size_t m_size;
@@ -41,6 +48,7 @@ class RGBDdataset
     std::vector<fs::path> m_depth_files;
     std::vector<fs::path> m_pose_files;
     std::vector<fs::path> m_mask_files;
+    std::vector<fs::path> m_label_files;
 };
 
 } /* namespace oslam */
