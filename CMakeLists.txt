@@ -56,6 +56,5 @@ if(ENABLE_FUZZING)
   )
   add_subdirectory(fuzz_test)
 endif()
-
-
+add_subdirectory(msg)
 add_subdirectory(src)

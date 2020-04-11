@@ -21,6 +21,8 @@ conan_cmake_run(
   fmt/6.0.0
   spdlog/1.5.0
   cppzmq/4.6.0
+  protoc_installer/3.9.1@bincrafters/stable
+  protobuf/3.9.1@bincrafters/stable
   OPTIONS
   ${CONAN_EXTRA_OPTIONS}
   BASIC_SETUP

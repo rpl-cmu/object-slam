@@ -2,12 +2,16 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import zmq
+import struct
 
 import torch
 from detectron2.config import get_cfg
 from detectron2.engine.defaults import DefaultPredictor
 
 import sys
+sys.path.insert(1, "../build/msg/")
+from image_pb2 import ColorImage
+
 sys.path.insert(1, "../3rdparty/detectron2/projects/PointRend")
 import point_rend
 
@@ -81,8 +85,8 @@ def main():
     receiver.connect("tcp://localhost:4242")
     receiver.setsockopt_string(zmq.SUBSCRIBE, "")
 
-    publisher = context.socket(zmq.PUB)
-    publisher.bind("tcp://localhost:4243")
+    # publisher = context.socket(zmq.PUB)
+    # publisher.bind("tcp://localhost:4243")
 
     config_file = "../3rdparty/detectron2/projects/PointRend/configs/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco.yaml"
     weights_file = "https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/model_final_3c3198.pkl"
@@ -91,11 +95,21 @@ def main():
     predictor = DefaultPredictor(cfg)
     while True:
         # Receiving image in bytes
-        image_bytes = np.frombuffer(receiver.recv(), dtype=np.uint8)
-        image = np.reshape(image_bytes, (480, 640, 3))
-        predictions = predictor(image)
-        processed_image, classes, scores = get_masks(predictions)
-        publisher.send(processed_image.tobytes())
+        color_image = ColorImage()
+        data = receiver.recv()
+        color_image.ParseFromString(data)
+        print(color_image.width)
+        print(color_image.height)
+        print(color_image.num_channels)
+        image_bytes = np.frombuffer(color_image.data, dtype=np.uint8)
+        image = np.reshape(image_bytes, (color_image.width, color_image.height, color_image.num_channels))
+        plt.imshow(image)
+        plt.show()
+        # image_bytes = np.frombuffer(receiver.recv(), dtype=np.uint8)
+        # image = np.reshape(image_bytes, (width, height, num_of_channels))
+        # predictions = predictor(image)
+        # processed_image, classes, scores = get_masks(predictions)
+        # publisher.send(processed_image.tobytes())
 
 
 if __name__ == "__main__":

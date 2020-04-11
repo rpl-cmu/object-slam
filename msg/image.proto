@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package oslam;
+
+// Protobuf message for color image
+message ColorImage {
+    int32 width = 1;
+    int32 height = 2;
+    int32 num_channels = 3;
+    int32 bytes_per_channel = 4;
+    bytes data = 5;
+}
