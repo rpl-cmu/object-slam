@@ -2,11 +2,13 @@ find_package(GTSAM REQUIRED)
 find_package(Open3D REQUIRED)
 find_package(Boost REQUIRED)
 find_package(Eigen3 REQUIRED)
+# find_package(OpenCV REQUIRED COMPONENTS core)
 
 add_executable(reconstruct main.cpp dataset.cpp frame.cpp)
+# target_include_directories(${OpenCV_INCLUDE_DIRS})
 target_link_libraries(
   reconstruct PRIVATE project_options project_warnings CONAN_PKG::docopt.cpp
-  CONAN_PKG::fmt CONAN_PKG::spdlog Boost::filesystem Eigen3::Eigen Open3D::Open3D ${CMAKE_DL_LIBS}
+  CONAN_PKG::fmt CONAN_PKG::spdlog CONAN_PKG::cppzmq Boost::filesystem Eigen3::Eigen Open3D::Open3D ${CMAKE_DL_LIBS} #${OpenCV_LIBS}
 )
 
 if(WITH_OPENMP)

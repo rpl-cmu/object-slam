@@ -20,6 +20,7 @@ conan_cmake_run(
   docopt.cpp/0.6.2
   fmt/6.0.0
   spdlog/1.5.0
+  cppzmq/4.6.0
   OPTIONS
   ${CONAN_EXTRA_OPTIONS}
   BASIC_SETUP

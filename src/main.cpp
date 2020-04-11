@@ -7,11 +7,13 @@
 *****************************************************************************/
 #include <iostream>
 #include <memory>
+#include <opencv2/imgcodecs.hpp>
 #include <thread>
 
 #include <docopt/docopt.h>
 #include <spdlog/spdlog.h>
 #include <fmt/format.h>
+#include <zmq.hpp>
 
 #include <Open3D/Open3D.h>
 
@@ -29,6 +31,9 @@ static constexpr auto USAGE =
           -h --help    Show the help screen
     )";
 
+static constexpr auto PUBLISH_ENDPOINT = "tcp://*:4242";
+static constexpr auto SUBSCRIBE_ENDPOINT = "tcp://*.4243";
+
 
 int main(int argc, char *argv[])
 {
@@ -42,12 +47,19 @@ int main(int argc, char *argv[])
 
     const auto dataset_path = args["<dataset_path>"].asString();
 
-    fmt::print("{}\n", dataset_path);
+    zmq::context_t context;
+    zmq::socket_t publisher(context, zmq::socket_type::pub);
+    publisher.bind(PUBLISH_ENDPOINT);
 
     oslam::RGBDdataset rgbd_dataset = oslam::RGBDdataset(dataset_path);
 
     std::shared_ptr<oslam::Frame> p_prev_frame;
     for (std::size_t i = 0; i < rgbd_dataset.size(); i++) {
+        auto curr_frame_data = rgbd_dataset.get_data(i);
+        auto color_image = curr_frame_data.color;
+        auto buf = zmq::buffer(color_image.data_);
+        publisher.send(buf, zmq::send_flags::dontwait);
+
         std::shared_ptr<oslam::Frame> p_current_frame(new oslam::Frame(i, rgbd_dataset.get_data(i), rgbd_dataset.intrinsic));
 
         std::shared_ptr<oslam::Odometry> p_odometry = p_current_frame->odometry(p_prev_frame);
