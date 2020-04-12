@@ -84,9 +84,11 @@ def main():
     receiver = context.socket(zmq.SUB)
     receiver.connect("tcp://localhost:4242")
     receiver.setsockopt_string(zmq.SUBSCRIBE, "")
+    receiver.setsockopt(zmq.LINGER, 0)
 
     publisher = context.socket(zmq.PUB)
     publisher.bind("tcp://*:4243")
+    publisher.setsockopt(zmq.LINGER, 0)
 
     config_file = "../3rdparty/detectron2/projects/PointRend/configs/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco.yaml"
     weights_file = "https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/model_final_3c3198.pkl"
@@ -94,27 +96,34 @@ def main():
     cfg = create_cfg(config_file, weights_file)
     predictor = DefaultPredictor(cfg)
     while True:
-        # Receiving image in bytes
-        color_image = ColorImage()
-        data = receiver.recv()
-        color_image.ParseFromString(data)
-        print(color_image.width)
-        print(color_image.height)
-        print(color_image.num_channels)
-        image_bytes = np.frombuffer(color_image.data, dtype=np.uint8)
-        image = np.reshape(image_bytes, (color_image.width, color_image.height, color_image.num_channels))
-        predictions = predictor(image)
-        processed_image, classes, scores = get_masks(predictions, image)
+        try:
+            # Receiving image in bytes
+            color_image = ColorImage()
+            data = receiver.recv()
+            color_image.ParseFromString(data)
+            print(color_image.width)
+            print(color_image.height)
+            print(color_image.num_channels)
+            image_bytes = np.frombuffer(color_image.data, dtype=np.uint8)
+            image = np.reshape(image_bytes, (color_image.width, color_image.height, color_image.num_channels))
+            predictions = predictor(image)
+            processed_image, classes, scores = get_masks(predictions, image)
 
-        mask_image = MaskImage()
-        mask_image.width = color_image.width
-        mask_image.height = color_image.height
-        mask_image.num_channels = 1
-        mask_image.bytes_per_channel = 2
-        mask_image.data = processed_image.tobytes()
-        mask_image.labels.extend(classes)
-        mask_image.scores.extend(scores)
-        publisher.send(mask_image.SerializeToString())
+            mask_image = MaskImage()
+            mask_image.width = color_image.width
+            mask_image.height = color_image.height
+            mask_image.num_channels = 1
+            mask_image.bytes_per_channel = 2
+            mask_image.data = processed_image.tobytes()
+            mask_image.labels.extend(classes)
+            mask_image.scores.extend(scores)
+            publisher.send(mask_image.SerializeToString())
+        except KeyboardInterrupt:
+            print("Keyboard interrupt received stopping")
+            receiver.close()
+            publisher.close()
+            context.term()
+            break
 
 
 if __name__ == "__main__":
