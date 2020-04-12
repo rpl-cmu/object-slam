@@ -85,6 +85,7 @@ def main():
     receiver.connect("tcp://localhost:4242")
     receiver.setsockopt_string(zmq.SUBSCRIBE, "")
     receiver.setsockopt(zmq.LINGER, 0)
+    receiver.setsockopt(zmq.CONFLATE, 1)
 
     publisher = context.socket(zmq.PUB)
     publisher.bind("tcp://*:4243")
