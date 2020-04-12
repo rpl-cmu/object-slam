@@ -9,10 +9,11 @@
 #define OSLAM_IMAGE_TRANSPORT_H
 
 #include <Open3D/Open3D.h>
+#include <thread>
 #include <zmq.hpp>
 
 static constexpr auto PUBLISH_ENDPOINT = "tcp://*:4242";
-static constexpr auto SUBSCRIBE_ENDPOINT = "tcp://*.4243";
+static constexpr auto SUBSCRIBE_ENDPOINT = "tcp://localhost:4243";
 
 namespace oslam {
 
@@ -28,14 +29,16 @@ public:
     explicit ImageTransporter (const ImageProperties& r_image_prop);
     virtual ~ImageTransporter ();
 
+    void poll(void);
     void send(const open3d::geometry::Image& r_color_image);
 
 private:
-    /* data */
     ImageProperties m_properties;
     zmq::context_t m_context;
     zmq::socket_t m_publisher;
-    /* zmq::socket_t m_subscriber; */
+    zmq::socket_t m_subscriber;
+
+    std::thread m_thread;
 };
 } // namespace oslam
 #endif /* ifndef OSLAM_IMAGE_TRANSPORT_H */

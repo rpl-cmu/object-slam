@@ -10,3 +10,13 @@ message ColorImage {
     int32 bytes_per_channel = 4;
     bytes data = 5;
 }
+
+message MaskImage {
+    int32 width = 1;
+    int32 height = 2;
+    int32 num_channels = 3;
+    int32 bytes_per_channel = 4;
+    bytes data = 5;
+    repeated uint32 labels = 6;
+    repeated float scores = 7;
+}

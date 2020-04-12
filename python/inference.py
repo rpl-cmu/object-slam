@@ -10,7 +10,7 @@ from detectron2.engine.defaults import DefaultPredictor
 
 import sys
 sys.path.insert(1, "../build/msg/")
-from image_pb2 import ColorImage
+from image_pb2 import *
 
 sys.path.insert(1, "../3rdparty/detectron2/projects/PointRend")
 import point_rend
@@ -37,7 +37,7 @@ def create_cfg(config_file, weights_file, cpu=False):
 
     return cfg
 
-def get_masks(predictions):
+def get_masks(predictions, image):
     """TODO: Docstring for get_masks.
 
     :arg1: TODO
@@ -85,8 +85,8 @@ def main():
     receiver.connect("tcp://localhost:4242")
     receiver.setsockopt_string(zmq.SUBSCRIBE, "")
 
-    # publisher = context.socket(zmq.PUB)
-    # publisher.bind("tcp://localhost:4243")
+    publisher = context.socket(zmq.PUB)
+    publisher.bind("tcp://*:4243")
 
     config_file = "../3rdparty/detectron2/projects/PointRend/configs/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco.yaml"
     weights_file = "https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/model_final_3c3198.pkl"
@@ -103,13 +103,18 @@ def main():
         print(color_image.num_channels)
         image_bytes = np.frombuffer(color_image.data, dtype=np.uint8)
         image = np.reshape(image_bytes, (color_image.width, color_image.height, color_image.num_channels))
-        plt.imshow(image)
-        plt.show()
-        # image_bytes = np.frombuffer(receiver.recv(), dtype=np.uint8)
-        # image = np.reshape(image_bytes, (width, height, num_of_channels))
-        # predictions = predictor(image)
-        # processed_image, classes, scores = get_masks(predictions)
-        # publisher.send(processed_image.tobytes())
+        predictions = predictor(image)
+        processed_image, classes, scores = get_masks(predictions, image)
+
+        mask_image = MaskImage()
+        mask_image.width = color_image.width
+        mask_image.height = color_image.height
+        mask_image.num_channels = 1
+        mask_image.bytes_per_channel = 2
+        mask_image.data = processed_image.tobytes()
+        mask_image.labels.extend(classes)
+        mask_image.scores.extend(scores)
+        publisher.send(mask_image.SerializeToString())
 
 
 if __name__ == "__main__":
