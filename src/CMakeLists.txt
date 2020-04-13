@@ -3,7 +3,15 @@ find_package(Open3D REQUIRED)
 find_package(Boost REQUIRED)
 find_package(Eigen3 REQUIRED)
 
-add_executable(reconstruct main.cpp dataset.cpp frame.cpp image_transport.cpp)
+add_executable(
+  reconstruct
+  main.cpp
+  controller.cpp
+  dataset.cpp
+  frame.cpp
+  image_transport.cpp
+)
+
 target_link_libraries(
   reconstruct PRIVATE project_options project_warnings
   CONAN_PKG::docopt.cpp
