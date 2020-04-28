@@ -22,7 +22,7 @@ class Controller
 {
   public:
     Controller(const std::map<std::string, docopt::value>& r_arguments);
-    virtual ~Controller();
+    virtual ~Controller() = default;
 
     void run(void);
 

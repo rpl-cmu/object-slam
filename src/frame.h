@@ -9,9 +9,9 @@
 #define OSLAM_FRAME_H
 
 #include <Eigen/Eigen>
-#include <Open3D/Geometry/RGBDImage.h>
 #include <Open3D/Open3D.h>
-#include <memory>
+
+#include "image_transport.h"
 
 namespace oslam {
 
@@ -39,6 +39,7 @@ class Frame
 
     std::shared_ptr<Odometry> odometry(std::shared_ptr<Frame> p_target_frame,
       const Eigen::Matrix4d &r_init_transformation = Eigen::Matrix4d::Identity());
+    void process_mask(std::unique_ptr<oslam::MaskedImage> p_masked_image);
 
     void visualize();
 
@@ -54,6 +55,10 @@ class Frame
     std::shared_ptr<open3d::geometry::RGBDImage> mp_rgbd;
     std::shared_ptr<open3d::geometry::PointCloud> mp_pcd;
     Eigen::Matrix4d m_pose;
+
+    std::vector<unsigned int> m_labels;
+    std::vector<double> m_scores;
+    std::vector<std::shared_ptr<open3d::geometry::RGBDImage>> mv_object_rgbd;
 };
 }// namespace oslam
 #endif /* ifndef OSLAM_FRAME_H */

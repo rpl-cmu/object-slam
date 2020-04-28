@@ -33,7 +33,7 @@ struct MaskedImage
 {
     open3d::geometry::Image image;
     std::vector<unsigned int> labels;
-    std::vector<float> scores;
+    std::vector<double> scores;
 };
 class ImageTransporter
 {

@@ -34,7 +34,7 @@ class RGBDdataset
 {
   public:
     explicit RGBDdataset(std::string root_dir);
-    virtual ~RGBDdataset();
+    virtual ~RGBDdataset() = default;
 
     inline std::size_t size(void) const { return m_size; }
     RGBDdata get_data(std::size_t index);

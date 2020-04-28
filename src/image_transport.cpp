@@ -7,13 +7,12 @@
  *****************************************************************************/
 #include "image_transport.h"
 
-#include <memory>
-#include <mutex>
 #include <spdlog/spdlog.h>
-#include <utility>
 #include <zmq.hpp>
 
-oslam::ImageTransporter::ImageTransporter(const ImageProperties &r_image_prop)
+namespace oslam {
+
+ImageTransporter::ImageTransporter(const ImageProperties &r_image_prop)
   : m_properties(r_image_prop), m_publisher(m_context, zmq::socket_type::pub),
     m_subscriber(m_context, zmq::socket_type::sub), m_thread(&oslam::ImageTransporter::poll, this)
 {
@@ -24,7 +23,7 @@ oslam::ImageTransporter::ImageTransporter(const ImageProperties &r_image_prop)
 
 oslam::ImageTransporter::~ImageTransporter() {}
 
-void oslam::ImageTransporter::send(const open3d::geometry::Image &r_color_image)
+void ImageTransporter::send(const open3d::geometry::Image &r_color_image)
 {
     oslam::ColorImage image_pbuf;
     image_pbuf.set_width(r_color_image.height_);// 480
@@ -39,7 +38,7 @@ void oslam::ImageTransporter::send(const open3d::geometry::Image &r_color_image)
     m_publisher.send(message, zmq::send_flags::dontwait);
 }
 
-void oslam::ImageTransporter::image_callback(const oslam::MaskImage &mask_pbuf)
+void ImageTransporter::image_callback(const oslam::MaskImage &mask_pbuf)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
 
@@ -56,7 +55,7 @@ void oslam::ImageTransporter::image_callback(const oslam::MaskImage &mask_pbuf)
 }
 
 
-void oslam::ImageTransporter::poll()
+void ImageTransporter::poll()
 {
     while (true) {
         zmq::message_t recv_msg;
@@ -68,3 +67,5 @@ void oslam::ImageTransporter::poll()
         }
     }
 }
+
+}// namespace oslam

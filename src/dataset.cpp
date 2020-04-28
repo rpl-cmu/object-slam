@@ -7,14 +7,16 @@
  *****************************************************************************/
 #include "dataset.h"
 
+#include <Open3D/Visualization/Utility/DrawGeometry.h>
 #include <boost/filesystem/operations.hpp>
 #include <functional>
 #include <spdlog/spdlog.h>
 #include <Open3D/Open3D.h>
 #include <vector>
 
+namespace oslam {
 
-oslam::RGBDdataset::RGBDdataset(std::string root_dir) : m_root_dir(std::move(root_dir)), m_size(0)
+RGBDdataset::RGBDdataset(std::string root_dir) : m_root_dir(std::move(root_dir)), m_size(0)
 {
     if (fs::exists(m_root_dir) && fs::is_directory(m_root_dir)) {
         fs::path color_files_path = m_root_dir / "color";
@@ -55,12 +57,7 @@ oslam::RGBDdataset::RGBDdataset(std::string root_dir) : m_root_dir(std::move(roo
     }
 }
 
-oslam::RGBDdataset::~RGBDdataset()
-{
-    // TODO: Delete allocations
-}
-
-oslam::RGBDdata oslam::RGBDdataset::get_data(std::size_t index)
+RGBDdata RGBDdataset::get_data(std::size_t index)
 {
     using namespace open3d::io;
     RGBDdata data;
@@ -79,3 +76,5 @@ oslam::RGBDdata oslam::RGBDdataset::get_data(std::size_t index)
       data.depth.width_);
     return data;
 }
+
+} // namespace oslam

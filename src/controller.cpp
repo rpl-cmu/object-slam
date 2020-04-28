@@ -8,10 +8,13 @@
 #include "controller.h"
 #include <memory>
 
-oslam::Controller::Controller(const std::map<std::string, docopt::value> &r_args)
+namespace oslam {
+
+Controller::Controller(const std::map<std::string, docopt::value> &r_args)
   : m_dataset_path(r_args.at("<dataset_path>").asString()), m_visualize(r_args.at("--vis")),
     m_debug(r_args.at("--debug"))
 {
+    spdlog::info("m_debug, m_visualize: {}, {}", m_debug, m_visualize);
     if (m_debug) spdlog::set_level(spdlog::level::debug);
 
     mp_rgbd_dataset = std::make_unique<oslam::RGBDdataset>(m_dataset_path);
@@ -21,12 +24,9 @@ oslam::Controller::Controller(const std::map<std::string, docopt::value> &r_args
     spdlog::info("Initialized Object - SLAM with tid: {}", std::this_thread::get_id());
 }
 
-oslam::Controller::~Controller() {}
-
-void oslam::Controller::run()
+void Controller::run()
 {
     std::shared_ptr<oslam::Frame> p_prev_frame;
-    std::unique_ptr<oslam::MaskedImage> p_masked_image;
 
     for (std::size_t i = 0; i < mp_rgbd_dataset->size(); i++) {
         mp_image_transport->send(mp_rgbd_dataset->get_data(i).color);
@@ -35,10 +35,9 @@ void oslam::Controller::run()
 
         std::shared_ptr<oslam::Odometry> p_odometry = p_current_frame->odometry(p_prev_frame);
 
+        // Some frames will have object_rgbd field populated
         if (mp_image_transport->p_masked_image) {
-            p_masked_image = std::move(mp_image_transport->p_masked_image);
-            unsigned int l = 0;
-            for (auto label : p_masked_image->labels) { spdlog::debug("Label {}: {}", l++, label); }
+            p_current_frame->process_mask(std::move(mp_image_transport->p_masked_image));
         }
         if (p_prev_frame)
             p_current_frame->set_pose(p_prev_frame->get_pose() * p_odometry->transform);
@@ -49,3 +48,5 @@ void oslam::Controller::run()
         p_prev_frame = p_current_frame;
     }
 }
+
+}// namespace oslam
