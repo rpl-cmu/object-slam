@@ -7,21 +7,23 @@
  *****************************************************************************/
 #include "image_transport.h"
 
+#include <memory>
+#include <mutex>
 #include <spdlog/spdlog.h>
 #include <zmq.hpp>
 
 namespace oslam {
 
-ImageTransporter::ImageTransporter(const ImageProperties &r_image_prop)
-  : m_properties(r_image_prop), m_publisher(m_context, zmq::socket_type::pub),
-    m_subscriber(m_context, zmq::socket_type::sub), m_thread(&oslam::ImageTransporter::poll, this)
+ImageTransporter::ImageTransporter(const ImageProperties &r_image_prop, std::shared_ptr<zmq::context_t> p_context)
+  : Thread("ImageTransportThread"), m_properties(r_image_prop), mp_context(p_context), m_publisher(*mp_context, zmq::socket_type::pub),
+    m_subscriber(*mp_context, zmq::socket_type::sub)
 {
     m_publisher.bind(PUBLISH_ENDPOINT);
     m_subscriber.connect(SUBSCRIBE_ENDPOINT);
     m_subscriber.setsockopt(ZMQ_SUBSCRIBE, "", 0);
 }
 
-oslam::ImageTransporter::~ImageTransporter() {}
+ImageTransporter::~ImageTransporter() {}
 
 void ImageTransporter::send(const open3d::geometry::Image &r_color_image)
 {
@@ -40,7 +42,7 @@ void ImageTransporter::send(const open3d::geometry::Image &r_color_image)
 
 void ImageTransporter::image_callback(const oslam::MaskImage &mask_pbuf)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::scoped_lock<std::mutex> lock(m_mutex);
 
     p_masked_image = std::unique_ptr<MaskedImage>(new MaskedImage);
     p_masked_image->image.width_ = mask_pbuf.width();
@@ -52,20 +54,20 @@ void ImageTransporter::image_callback(const oslam::MaskImage &mask_pbuf)
 
     p_masked_image->labels.assign(mask_pbuf.labels().begin(), mask_pbuf.labels().end());
     p_masked_image->scores.assign(mask_pbuf.scores().begin(), mask_pbuf.scores().end());
+    spdlog::info("Callback received");
 }
 
-
-void ImageTransporter::poll()
+bool ImageTransporter::process()
 {
-    while (true) {
-        zmq::message_t recv_msg;
-        oslam::MaskImage mask_pbuf;
-        auto success = m_subscriber.recv(recv_msg);
-        if (success) {
-            mask_pbuf.ParseFromString(recv_msg.to_string());
-            image_callback(mask_pbuf);
-        }
+    zmq::message_t recv_msg;
+    oslam::MaskImage mask_pbuf;
+    auto success = m_subscriber.recv(recv_msg, zmq::recv_flags::dontwait);
+    if (success) {
+        mask_pbuf.ParseFromString(recv_msg.to_string());
+        image_callback(mask_pbuf);
     }
+    spdlog::info("Callback sent");
+    return true;
 }
 
 }// namespace oslam

@@ -31,5 +31,5 @@ int main(int argc, char *argv[])
 
     oslam::Controller controller(args);
 
-    controller.run();
+    controller.start();
 }

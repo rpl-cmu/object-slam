@@ -107,9 +107,12 @@ def main():
             print(color_image.num_channels)
             image_bytes = np.frombuffer(color_image.data, dtype=np.uint8)
             image = np.reshape(image_bytes, (color_image.width, color_image.height, color_image.num_channels))
+            image = image[20:-20, 20:-20]
+            print(image.shape)
             predictions = predictor(image)
             processed_image, classes, scores = get_masks(predictions, image)
-
+            processed_image = np.pad(processed_image, 20, 'constant')
+            print(processed_image.shape)
             mask_image = MaskImage()
             mask_image.width = color_image.width
             mask_image.height = color_image.height

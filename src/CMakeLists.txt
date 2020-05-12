@@ -11,6 +11,9 @@ add_executable(
   dataset.cpp
   frame.cpp
   image_transport.cpp
+  tracker.cpp
+  # object.cpp
+  # map.cpp
 )
 
 target_link_libraries(

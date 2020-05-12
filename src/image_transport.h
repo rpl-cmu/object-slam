@@ -16,6 +16,8 @@
 
 #include <msg/image.pb.h>
 
+#include "thread_class.h"
+
 static constexpr auto PUBLISH_ENDPOINT = "tcp://*:4242";
 static constexpr auto SUBSCRIBE_ENDPOINT = "tcp://localhost:4243";
 
@@ -35,26 +37,30 @@ struct MaskedImage
     std::vector<unsigned int> labels;
     std::vector<double> scores;
 };
-class ImageTransporter
+
+class ImageTransporter : public Thread
 {
   public:
-    explicit ImageTransporter(const ImageProperties &r_image_prop);
+    explicit ImageTransporter(const ImageProperties &r_image_prop, std::shared_ptr<zmq::context_t> p_context);
+    ImageTransporter(const ImageTransporter&) = delete;
+    ImageTransporter& operator=(const ImageTransporter&) = delete;
+
     virtual ~ImageTransporter();
 
-    void poll(void);
     void send(const open3d::geometry::Image &r_color_image);
-    void image_callback(const MaskImage &r_mask_pbuf);
 
     std::unique_ptr<MaskedImage> p_masked_image;
 
   private:
+    bool process(void) override;
+    void image_callback(const MaskImage &r_mask_pbuf);
+
     ImageProperties m_properties;
-    zmq::context_t m_context;
+
+    std::shared_ptr<zmq::context_t> mp_context;
     zmq::socket_t m_publisher;
     zmq::socket_t m_subscriber;
 
-    std::thread m_thread;
-    std::mutex m_mutex;
 };
 }// namespace oslam
 #endif /* ifndef OSLAM_IMAGE_TRANSPORT_H */

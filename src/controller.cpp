@@ -7,46 +7,61 @@
  *****************************************************************************/
 #include "controller.h"
 #include <memory>
+#include <vector>
 
 namespace oslam {
 
 Controller::Controller(const std::map<std::string, docopt::value> &r_args)
-  : m_dataset_path(r_args.at("<dataset_path>").asString()), m_visualize(r_args.at("--vis")),
-    m_debug(r_args.at("--debug"))
+  : m_visualize(r_args.at("--vis")), m_debug(r_args.at("--debug")),
+    m_dataset_path(r_args.at("<dataset_path>").asString()),
+    mp_rgbd_dataset(nullptr),
+    mp_image_transport(nullptr),
+    mp_context(std::make_shared<zmq::context_t>(1))
 {
-    spdlog::info("m_debug, m_visualize: {}, {}", m_debug, m_visualize);
-    if (m_debug) spdlog::set_level(spdlog::level::debug);
+    if (m_debug)
+    {
+        spdlog::set_level(spdlog::level::debug);
+    }
+    spdlog::info("m_debug, m_visualize: ({}, {})", m_debug, m_visualize);
+    spdlog::info("Thread ({}, {}) started", "ControllerThread", std::this_thread::get_id());
+}
 
-    mp_rgbd_dataset = std::make_unique<oslam::RGBDdataset>(m_dataset_path);
+int Controller::start()
+{
+    if (setup()) {
+        run();
+        return 0;
+    }
+    return -1;
+}
+
+bool Controller::setup()
+{
+    mp_rgbd_dataset = std::make_shared<oslam::RGBDdataset>(m_dataset_path);
     ImageProperties image_properties({ 480, 640, 3, 1 });
-    mp_image_transport = std::make_unique<oslam::ImageTransporter>(image_properties);
+    mp_image_transport = std::make_shared<oslam::ImageTransporter>(image_properties, mp_context);
 
-    spdlog::info("Initialized Object - SLAM with tid: {}", std::this_thread::get_id());
+    mp_tracker = std::make_shared<oslam::Tracker>(mp_rgbd_dataset, mp_image_transport);
+
+    if(mp_rgbd_dataset && mp_image_transport && mp_tracker)
+        return true;
+    return false;
 }
 
 void Controller::run()
 {
-    std::shared_ptr<oslam::Frame> p_prev_frame;
 
-    for (std::size_t i = 0; i < mp_rgbd_dataset->size(); i++) {
-        mp_image_transport->send(mp_rgbd_dataset->get_data(i).color);
-        std::shared_ptr<oslam::Frame> p_current_frame(
-          new oslam::Frame(i, mp_rgbd_dataset->get_data(i), mp_rgbd_dataset->intrinsic));
+    // Start thread for each component
+    // TODO: ImageTransporter does not work!
+    /* mvp_threads.push_back(std::thread(&ImageTransporter::start, mp_image_transport)); */
+    mvp_threads.push_back(std::thread(&Thread::start, mp_tracker));
 
-        std::shared_ptr<oslam::Odometry> p_odometry = p_current_frame->odometry(p_prev_frame);
-
-        // Some frames will have object_rgbd field populated
-        if (mp_image_transport->p_masked_image) {
-            p_current_frame->process_mask(std::move(mp_image_transport->p_masked_image));
-        }
-        if (p_prev_frame)
-            p_current_frame->set_pose(p_prev_frame->get_pose() * p_odometry->transform);
-        spdlog::info("Frame current pose: \n{}\n", p_current_frame->get_pose());
-
-        if (m_visualize) p_current_frame->visualize();
-
-        p_prev_frame = p_current_frame;
+    // Join all threads
+    for (std::size_t i=0; i < mvp_threads.size(); i++) {
+        if(mvp_threads.at(i).joinable())
+            mvp_threads.at(i).join();
     }
+
 }
 
 }// namespace oslam

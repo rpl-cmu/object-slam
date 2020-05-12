@@ -10,6 +10,7 @@
 
 #include <Eigen/Eigen>
 #include <Open3D/Open3D.h>
+#include <vector>
 
 #include "image_transport.h"
 
@@ -44,9 +45,13 @@ class Frame
     void visualize();
 
     inline std::shared_ptr<open3d::geometry::RGBDImage> get_rgbd(void) const { return mp_rgbd; }
+    /* inline std::vector<std::shared_ptr<open3d::geometry::RGBDImage>> get_objects(void) { return mv_object_rgbd; } */
     inline Eigen::Matrix4d get_pose(void) const { return m_pose; }
     inline void set_pose(Eigen::Matrix4d pose) { m_pose = std::move(pose); }
 
+    std::vector<unsigned int> m_labels;
+    std::vector<double> m_scores;
+    std::vector<std::shared_ptr<open3d::geometry::RGBDImage>> mv_object_rgbd;
   private:
     std::size_t m_frame_id;
     open3d::geometry::Image m_color;
@@ -56,9 +61,6 @@ class Frame
     std::shared_ptr<open3d::geometry::PointCloud> mp_pcd;
     Eigen::Matrix4d m_pose;
 
-    std::vector<unsigned int> m_labels;
-    std::vector<double> m_scores;
-    std::vector<std::shared_ptr<open3d::geometry::RGBDImage>> mv_object_rgbd;
 };
 }// namespace oslam
 #endif /* ifndef OSLAM_FRAME_H */
