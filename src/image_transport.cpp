@@ -42,7 +42,7 @@ void ImageTransporter::send(const open3d::geometry::Image &r_color_image)
 
 void ImageTransporter::image_callback(const oslam::MaskImage &mask_pbuf)
 {
-    std::scoped_lock<std::mutex> lock(m_mutex);
+    /* std::scoped_lock<std::mutex> lock(m_mutex); */
 
     p_masked_image = std::unique_ptr<MaskedImage>(new MaskedImage);
     p_masked_image->image.width_ = mask_pbuf.width();

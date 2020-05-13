@@ -16,7 +16,7 @@
 
 #include <msg/image.pb.h>
 
-#include "thread_class.h"
+#include "utils/thread_class.h"
 
 static constexpr auto PUBLISH_ENDPOINT = "tcp://*:4242";
 static constexpr auto SUBSCRIBE_ENDPOINT = "tcp://localhost:4243";

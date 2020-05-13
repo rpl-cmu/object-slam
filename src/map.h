@@ -8,19 +8,19 @@
 #ifndef OSLAM_MAP_H
 #define OSLAM_MAP_H
 
-#include "object.h"
+#include "tsdf_object.h"
 namespace oslam {
 
     class GlobalMap
     {
     public:
-        GlobalMap ();
-        GlobalMap (std::shared_ptr<oslam::Object> p_background_object);
+        explicit GlobalMap() = default;
         virtual ~GlobalMap () = default;
 
+        void add_object_volume(std::shared_ptr<oslam::TSDFObject> p_object);
     private:
         /* data */
-        std::vector<std::shared_ptr<oslam::Object>> mv_objects;
+        std::vector<std::shared_ptr<oslam::TSDFObject>> mv_objects;
     };
 }
 #endif /* ifndef OSLAM_MAP_H */

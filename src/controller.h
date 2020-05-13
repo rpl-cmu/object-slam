@@ -9,14 +9,16 @@
 #define OSLAM_CONTROLLER_H
 
 #include <docopt/docopt.h>
+#include <memory>
 #include <spdlog/spdlog.h>
 #include <Open3D/Open3D.h>
 #include <zmq.hpp>
 
-#include "thread_class.h"
-#include "dataset.h"
+#include "utils/thread_class.h"
+#include "data_reader.h"
 #include "image_transport.h"
 #include "tracker.h"
+#include "map.h"
 /* #include "visualizer.h" */
 
 namespace oslam {
@@ -37,7 +39,9 @@ class Controller
     bool m_debug;
     std::string m_dataset_path;
 
-    std::shared_ptr<RGBDdataset> mp_rgbd_dataset;
+    std::shared_ptr<GlobalMap> mp_global_map;
+
+    std::shared_ptr<DataReader> mp_data_reader;
     std::shared_ptr<ImageTransporter> mp_image_transport;
     std::shared_ptr<Tracker> mp_tracker;
 

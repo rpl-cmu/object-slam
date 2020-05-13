@@ -8,6 +8,7 @@
 #ifndef OSLAM_THREAD
 #define OSLAM_THREAD
 
+#include <atomic>
 #include <cassert>
 #include <condition_variable>
 #include <thread>
@@ -21,7 +22,7 @@ namespace oslam {
 class Thread
 {
   public:
-    Thread(std::string threadname) :m_threadname(threadname), is_ready(false) {}
+    Thread(std::string threadname) :m_threadname(threadname) {}
 
     // Non-copyable
     Thread(const Thread&) = delete;
@@ -29,16 +30,15 @@ class Thread
 
     virtual ~Thread() = default;
 
-    virtual void start()
+    virtual bool start()
     {
-        std::scoped_lock<std::mutex> lock(m_mutex);
-        is_ready = true;
-        run();
+        is_running = true;
+        return run();
     }
 
 
   protected:
-    void run(void)
+    bool run(void)
     {
         spdlog::info("Thread ({},{}) started", m_threadname, std::this_thread::get_id());
         //TODO: Add running conditional variable
@@ -47,8 +47,9 @@ class Thread
         {
             //TODO: Add Timer
         }
-
+        is_running = false;
         spdlog::info("Thread ({}, {}), ended", m_threadname, std::this_thread::get_id());
+        return false;
     }
 
     virtual bool process(void) = 0;
@@ -56,8 +57,7 @@ class Thread
     /* data */
     std::string m_threadname;
     //TODO: Reconsider this to conditional variable
-    std::mutex m_mutex;
-    bool is_ready;
+    std::atomic_bool is_running = {false};
 };
 }// namespace oslam
 #endif /* ifndef OSLAM_THREAD */

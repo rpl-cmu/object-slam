@@ -11,20 +11,24 @@
 
 namespace oslam {
 
-Tracker::Tracker(std::shared_ptr<oslam::RGBDdataset> p_dataset,
-  std::shared_ptr<oslam::ImageTransporter> p_image_transport)
-  : Thread("TrackerThread"), mp_dataset(p_dataset), mp_image_transport(p_image_transport),
-    m_intrinsic(mp_dataset->intrinsic), m_curr_frame_id(0), mp_current_frame(nullptr),
-    mp_prev_frame(nullptr)
+Tracker::Tracker(std::shared_ptr<oslam::ImageTransporter> p_image_transport)
+  : Thread("TrackerThread"), mp_image_transport(p_image_transport), m_curr_frame_id(0),
+    m_rgbd_data_queue("RGBDdataQueue"), mp_current_frame(nullptr), mp_prev_frame(nullptr)
 {}
 
 Tracker::~Tracker() {}
 
 bool Tracker::process(void)
 {
-    RGBDdata data = mp_dataset->get_data(m_curr_frame_id);
+    std::unique_ptr<RGBDdata> p_data = nullptr;
+    bool queue_state = false;
 
-    mp_current_frame = std::make_shared<oslam::Frame>(m_curr_frame_id, data, m_intrinsic);
+    queue_state = m_rgbd_data_queue.popBlocking(p_data);
+
+    if (!queue_state) spdlog::error("RGBD data queue is down");
+
+    // TODO: Why not just create frame object directly from the datareader?
+    mp_current_frame = std::make_shared<oslam::Frame>(m_curr_frame_id, *p_data);
 
     // TODO: Wait for mapping thread to provide map vertices and normals
     // TODO: Bilateral filter the depth map

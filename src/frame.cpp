@@ -6,7 +6,7 @@
  * Description:      Frame Implementation
  *****************************************************************************/
 #include "frame.h"
-#include "dataset.h"
+#include "data_reader.h"
 
 #include <spdlog/spdlog.h>
 #include <Open3D/Open3D.h>
@@ -14,11 +14,9 @@
 
 namespace oslam {
 
-Frame::Frame(std::size_t index,
-  const oslam::RGBDdata &r_data,
-  open3d::camera::PinholeCameraIntrinsic intrinsic)
-  : m_frame_id(index), m_color(r_data.color), m_depth(r_data.depth),
-    m_intrinsic(std::move(intrinsic)), m_pose(Eigen::Matrix4d::Identity())
+Frame::Frame(std::size_t index, const oslam::RGBDdata &r_data)
+  : m_frame_id(index), m_color(r_data.color), m_depth(r_data.depth), m_intrinsic(r_data.intrinsic),
+    m_pose(Eigen::Matrix4d::Identity())
 {
     mp_rgbd =
       open3d::geometry::RGBDImage::CreateFromColorAndDepth(m_color, m_depth, 1000, 3.0, false);

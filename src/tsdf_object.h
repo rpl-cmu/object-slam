@@ -3,7 +3,7 @@
  *
  * Author:           Akash Sharma
  * Created:          04/29/20
- * Description:      Object class
+ * Description:      TSDFObject class
  *****************************************************************************/
 #ifndef OSLAM_OBJECT_H
 #define OSLAM_OBJECT_H
@@ -13,22 +13,26 @@
 
 namespace oslam {
 
-class Object
+class TSDFObject
 {
   public:
-    Object(std::shared_ptr<open3d::geometry::RGBDImage> p_object_rgbd,
-      unsigned int label,
+    TSDFObject(unsigned int label,
       double score,
-      open3d::camera::PinholeCameraIntrinsic r_intrinsic);
-    virtual ~Object() = default;
+      open3d::camera::PinholeCameraIntrinsic r_intrinsic,
+      double volume_size = 256.0,
+      double resolution = 4.0);
+    virtual ~TSDFObject() = default;
 
   private:
     open3d::camera::PinholeCameraIntrinsic m_intrinsic;
     open3d::integration::ScalableTSDFVolume m_object_volume;
-    std::shared_ptr<open3d::geometry::PointCloud> mp_pcd;
 
+    double m_volume_size;
+    double m_resolution;
     unsigned int m_label;
     double m_score;
+
+    // list of frame IDs where observed
     std::vector<std::size_t> m_observations;
     Eigen::Matrix4d m_pose;
 };

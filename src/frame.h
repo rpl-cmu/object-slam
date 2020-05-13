@@ -34,8 +34,7 @@ class Frame
 {
   public:
     Frame(std::size_t index,
-      const RGBDdata &r_data,
-      open3d::camera::PinholeCameraIntrinsic intrinsic);
+      const RGBDdata &r_data);
     virtual ~Frame();
 
     std::shared_ptr<Odometry> odometry(std::shared_ptr<Frame> p_target_frame,

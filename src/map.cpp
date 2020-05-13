@@ -10,13 +10,8 @@
 
 namespace oslam {
 
-    //TODO: Default constructor
-    GlobalMap::GlobalMap()
+    void GlobalMap::add_object_volume(std::shared_ptr<oslam::TSDFObject> p_object)
     {
     }
 
-    GlobalMap::GlobalMap(std::shared_ptr<open3d::integration::ScalableTSDFVolume> p_background_object)
-    {
-        mv_objects.push_back(p_background_object);
-    }
 }
