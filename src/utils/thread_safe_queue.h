@@ -15,18 +15,6 @@
 #ifndef OSLAM_THREADSAFEQUEUE_H
 #define OSLAM_THREADSAFEQUEUE_H
 
-#define KIMERA_POINTER_TYPEDEFS(TypeName)                 \
-  typedef std::shared_ptr<TypeName> Ptr;                  \
-  typedef std::shared_ptr<const TypeName> ConstPtr;       \
-  typedef std::unique_ptr<TypeName> UniquePtr;            \
-  typedef std::unique_ptr<const TypeName> ConstUniquePtr; \
-  typedef std::weak_ptr<TypeName> WeakPtr;                \
-  typedef std::weak_ptr<const TypeName> WeakConstPtr;     \
-  void definePointerTypedefs##__FILE__##__LINE__(void)
-
-#define KIMERA_DELETE_COPY_CONSTRUCTORS(TypeName) \
-  TypeName(const TypeName&) = delete;             \
-  void operator=(const TypeName&) = delete
 
 #include <atomic>
 #include <chrono>
@@ -39,13 +27,15 @@
 
 #include <spdlog/spdlog.h>
 
+#include "macros.h"
+
 namespace oslam {
 
 template <typename T>
 class ThreadsafeQueueBase {
  public:
-  KIMERA_POINTER_TYPEDEFS(ThreadsafeQueueBase);
-  KIMERA_DELETE_COPY_CONSTRUCTORS(ThreadsafeQueueBase);
+  OSLAM_POINTER_TYPEDEFS(ThreadsafeQueueBase);
+  OSLAM_DELETE_COPY_CONSTRUCTORS(ThreadsafeQueueBase);
   typedef std::queue<std::shared_ptr<T>> InternalQueue;
   explicit ThreadsafeQueueBase(const std::string& queue_id);
   virtual ~ThreadsafeQueueBase() = default;
@@ -159,8 +149,8 @@ template <typename T>
 class ThreadsafeQueue : public ThreadsafeQueueBase<T> {
  public:
   using TQB = ThreadsafeQueueBase<T>;
-  KIMERA_POINTER_TYPEDEFS(ThreadsafeQueue);
-  KIMERA_DELETE_COPY_CONSTRUCTORS(ThreadsafeQueue);
+  OSLAM_POINTER_TYPEDEFS(ThreadsafeQueue);
+  OSLAM_DELETE_COPY_CONSTRUCTORS(ThreadsafeQueue);
   explicit ThreadsafeQueue(const std::string& queue_id);
   virtual ~ThreadsafeQueue() = default;
 
@@ -245,8 +235,8 @@ class ThreadsafeQueue : public ThreadsafeQueueBase<T> {
 template <typename T>
 class ThreadsafeNullQueue : public ThreadsafeQueue<T> {
  public:
-  KIMERA_POINTER_TYPEDEFS(ThreadsafeNullQueue);
-  KIMERA_DELETE_COPY_CONSTRUCTORS(ThreadsafeNullQueue);
+  OSLAM_POINTER_TYPEDEFS(ThreadsafeNullQueue);
+  OSLAM_DELETE_COPY_CONSTRUCTORS(ThreadsafeNullQueue);
   explicit ThreadsafeNullQueue(const std::string& queue_id)
       : ThreadsafeQueue<T>(queue_id) {}
   ~ThreadsafeNullQueue() override = default;

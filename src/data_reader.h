@@ -17,36 +17,35 @@
 #include <Open3D/Open3D.h>
 
 #include "utils/thread_safe_queue.h"
+#include "frame.h"
 
 namespace oslam {
 
 namespace fs = boost::filesystem;
 
-struct RGBDdata
-{
-    open3d::camera::PinholeCameraIntrinsic intrinsic;
-    open3d::geometry::Image color;
-    open3d::geometry::Image depth;
-    open3d::geometry::Image mask;
-    Eigen::Matrix4d gt_pose;
-    std::vector<unsigned int> labels;
-    std::vector<float> scores;
-};
-
 /*! \class DataReader
- *  \brief Brief class description
+ *  \brief Reads from a given dataset folder given the following structure
+ *  .
+ *  ├── camera-intrinsics.json
+ *  ├── color [723 entries]
+ *  ├── depth [723 entries]
+ *  └── preprocessed [1446 entries]
  *
- *  Detailed description
  */
 class DataReader
 {
   public:
-    typedef std::function<void(std::unique_ptr<RGBDdata>)> RGBDCallback;
+      OSLAM_POINTER_TYPEDEFS(DataReader);
+
+    typedef std::function<void(Frame::UniquePtr)> FrameCallback;
 
     explicit DataReader(const std::string &r_root_dir);
     virtual ~DataReader() = default;
 
-    void register_callback(const RGBDCallback &r_callback) { m_callbacks.push_back(r_callback); }
+    DataReader(const DataReader&) = delete;
+    DataReader& operator=(const DataReader&) = delete;
+
+    void register_callback(const FrameCallback &r_callback) { m_callbacks.push_back(r_callback); }
 
     bool run(void);
 
@@ -76,7 +75,7 @@ class DataReader
     open3d::camera::PinholeCameraIntrinsic m_intrinsic;
 
     //! Vector of callbacks called when data available
-    std::vector<RGBDCallback> m_callbacks;
+    std::vector<FrameCallback> m_callbacks;
 
     //! Shutdown switch
     std::atomic_bool m_shutdown = { false };

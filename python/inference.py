@@ -81,15 +81,15 @@ def main():
     """
 
     context = zmq.Context()
-    receiver = context.socket(zmq.SUB)
-    receiver.connect("tcp://localhost:4242")
-    receiver.setsockopt_string(zmq.SUBSCRIBE, "")
-    receiver.setsockopt(zmq.LINGER, 0)
-    receiver.setsockopt(zmq.CONFLATE, 1)
+    reply_sock = context.socket(zmq.REP)
+    reply_sock.bind("tcp://*:5555")
+    # reply_sock.setsockopt_string(zmq.SUBSCRIBE, "")
+    # reply_sock.setsockopt(zmq.LINGER, 0)
+    # reply_sock.setsockopt(zmq.CONFLATE, 1)
 
-    publisher = context.socket(zmq.PUB)
-    publisher.bind("tcp://*:4243")
-    publisher.setsockopt(zmq.LINGER, 0)
+    # publisher = context.socket(zmq.PUB)
+    # publisher.bind("tcp://*:4243")
+    # publisher.setsockopt(zmq.LINGER, 0)
 
     config_file = "../3rdparty/detectron2/projects/PointRend/configs/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco.yaml"
     weights_file = "https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/model_final_3c3198.pkl"
@@ -100,7 +100,7 @@ def main():
         try:
             # Receiving image in bytes
             color_image = ColorImage()
-            data = receiver.recv()
+            data = reply_sock.recv()
             color_image.ParseFromString(data)
             print(color_image.width)
             print(color_image.height)
@@ -121,11 +121,11 @@ def main():
             mask_image.data = processed_image.tobytes()
             mask_image.labels.extend(classes)
             mask_image.scores.extend(scores)
-            publisher.send(mask_image.SerializeToString())
+
+            reply_sock.send(mask_image.SerializeToString())
         except KeyboardInterrupt:
             print("Keyboard interrupt received stopping")
-            receiver.close()
-            publisher.close()
+            reply_sock.close()
             context.term()
             break
 

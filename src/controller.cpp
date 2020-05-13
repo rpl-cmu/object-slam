@@ -35,17 +35,22 @@ int Controller::start()
 
 bool Controller::setup()
 {
-    /* mp_rgbd_dataset = std::make_shared<oslam::RGBDdataset>(m_dataset_path); */
     mp_data_reader = std::make_shared<oslam::DataReader>(m_dataset_path);
     // TODO(Akash): Read image properties from dataset folder
-    ImageProperties image_properties({ 480, 640, 3, 1 });
+    /* ImageProperties image_properties({ 480, 640, 3, 1 }); */
 
-    mp_image_transport = std::make_shared<oslam::ImageTransporter>(image_properties, mp_context);
+    mp_image_transport = std::make_shared<oslam::ImageTransporter>();
 
     mp_tracker = std::make_shared<oslam::Tracker>(mp_image_transport);
 
     mp_data_reader->register_callback(
       std::bind(&oslam::Tracker::fill_data_queue, mp_tracker, std::placeholders::_1));
+
+    mp_image_transport->register_callback(
+      std::bind(&oslam::Tracker::fill_mask_image_queue, mp_tracker, std::placeholders::_1));
+
+    mp_tracker->register_callback(std::bind(
+      &oslam::ImageTransporter::fill_send_frame_queue, mp_image_transport, std::placeholders::_1));
 
     mp_global_map = std::make_shared<oslam::GlobalMap>();
 
@@ -71,7 +76,9 @@ void Controller::run()
 
     auto handle_tracker = std::async(std::launch::async, &Thread::start, mp_tracker);
 
-    spdlog::info("{}, {}", handle_dataset.get(), handle_tracker.get());
+    auto handle_image_transport = std::async(std::launch::async, &ImageTransporter::run, mp_image_transport);
+
+    spdlog::info("{}, {}, {}", handle_dataset.get(), handle_tracker.get(), handle_image_transport.get());
 }
 
 }// namespace oslam

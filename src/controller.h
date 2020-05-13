@@ -45,8 +45,6 @@ class Controller
     std::shared_ptr<ImageTransporter> mp_image_transport;
     std::shared_ptr<Tracker> mp_tracker;
 
-    std::vector<std::thread> mvp_threads;
-
     std::shared_ptr<zmq::context_t> mp_context;
 };
 }// namespace oslam

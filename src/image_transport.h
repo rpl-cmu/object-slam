@@ -16,51 +16,67 @@
 
 #include <msg/image.pb.h>
 
+#include "utils/macros.h"
 #include "utils/thread_class.h"
+#include "utils/thread_safe_queue.h"
 
-static constexpr auto PUBLISH_ENDPOINT = "tcp://*:4242";
-static constexpr auto SUBSCRIBE_ENDPOINT = "tcp://localhost:4243";
+#include "frame.h"
+
+static constexpr auto SERVER_ENDPOINT = "tcp://localhost:5555";
 
 namespace oslam {
 
-struct ImageProperties
+/*! \class ImageTransporter
+ *  \brief Transport frame object to Python process running PointRend inference for segmentation
+ *
+ *  Detailed description
+ */
+class ImageTransporter
 {
-    int width;
-    int height;
-    int num_of_channels;
-    int bytes_per_channel;
-};
+public:
+    //TODO(Akash): Change this to modified frame
+    typedef std::function<void(MaskedImage::UniquePtr)> MaskedImageCallback;
+    explicit ImageTransporter();
+    virtual ~ImageTransporter() = default;
 
-struct MaskedImage
-{
-    open3d::geometry::Image image;
-    std::vector<unsigned int> labels;
-    std::vector<double> scores;
-};
-
-class ImageTransporter : public Thread
-{
-  public:
-    explicit ImageTransporter(const ImageProperties &r_image_prop, std::shared_ptr<zmq::context_t> p_context);
+    //! Non-copyable and Non-assignable by default
     ImageTransporter(const ImageTransporter&) = delete;
     ImageTransporter& operator=(const ImageTransporter&) = delete;
 
-    virtual ~ImageTransporter();
+    void register_callback(const MaskedImageCallback& r_callback)
+    {
+        m_output_callbacks.push_back(r_callback);
+    }
 
-    void send(const open3d::geometry::Image &r_color_image);
+    inline void fill_send_frame_queue(Frame::UniquePtr p_frame)
+    {
+        if(p_frame->is_keyframe())
+            m_send_frame_queue.pushBlockingIfFull(std::move(p_frame));
+    }
 
-    std::unique_ptr<MaskedImage> p_masked_image;
+    bool run(void);
 
-  private:
-    bool process(void) override;
-    void image_callback(const MaskImage &r_mask_pbuf);
+protected:
 
-    ImageProperties m_properties;
+    Frame::UniquePtr getInput(void);
 
-    std::shared_ptr<zmq::context_t> mp_context;
-    zmq::socket_t m_publisher;
-    zmq::socket_t m_subscriber;
+    MaskedImage::UniquePtr process(Frame::UniquePtr p_frame);
 
+    MaskedImage::UniquePtr deserialize_image(const MaskImage &r_mask_pbuf);
+
+    //! Shared ZMQ context for this thread to receive and send data
+    zmq::context_t m_context{1};
+    //! ZMQ socket to send request to Python server
+    zmq::socket_t m_request_sock;
+
+    //! Frame buffer to send
+    ThreadsafeQueue<Frame::UniquePtr> m_send_frame_queue;
+
+    //! Output callbacks
+    std::vector<MaskedImageCallback> m_output_callbacks;
+
+    //! Atomic boolean to control clean shutdown of thread
+    std::atomic_bool m_shutdown = {false};
 };
 }// namespace oslam
 #endif /* ifndef OSLAM_IMAGE_TRANSPORT_H */

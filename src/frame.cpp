@@ -14,15 +14,20 @@
 
 namespace oslam {
 
-Frame::Frame(std::size_t index, const oslam::RGBDdata &r_data)
-  : m_frame_id(index), m_color(r_data.color), m_depth(r_data.depth), m_intrinsic(r_data.intrinsic),
-    m_pose(Eigen::Matrix4d::Identity())
+Frame::Frame(std::size_t frame_id,
+  open3d::camera::PinholeCameraIntrinsic intrinsic,
+  open3d::geometry::Image color,
+  open3d::geometry::Image depth,
+  open3d::geometry::Image gt_mask,
+  bool is_keyframe,
+  const std::vector<unsigned int>& r_gt_labels,
+  const std::vector<double> &r_gt_scores)
+  : m_frame_id(frame_id), m_intrinsic(intrinsic), m_color(color), m_depth(depth),
+    m_gt_mask(gt_mask), m_is_keyframe(is_keyframe), m_gt_labels(r_gt_labels), m_gt_scores(r_gt_scores)
 {
     mp_rgbd =
       open3d::geometry::RGBDImage::CreateFromColorAndDepth(m_color, m_depth, 1000, 3.0, false);
 }
-
-Frame::~Frame() {}
 
 std::shared_ptr<oslam::Odometry> Frame::odometry(
   [[maybe_unused]] std::shared_ptr<Frame> p_target_frame,

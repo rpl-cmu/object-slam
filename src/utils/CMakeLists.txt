@@ -1,4 +1,4 @@
-# target_sources(main
-#     PUBLIC
-#     Add source files when created
-#     )
+target_sources(reconstruct
+    PUBLIC
+    # pipeline_module.cpp
+    )

@@ -4,7 +4,6 @@ find_package(Boost REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
 
-add_subdirectory(utils)
 
 add_executable(
   reconstruct
@@ -17,6 +16,7 @@ add_executable(
   tsdf_object.cpp
   map.cpp
 )
+add_subdirectory(utils)
 
 target_link_libraries(
   reconstruct PRIVATE project_options project_warnings

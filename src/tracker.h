@@ -26,23 +26,40 @@ class Tracker: public Thread
     explicit Tracker(std::shared_ptr<oslam::ImageTransporter> p_image_transport);
     virtual ~Tracker();
 
-    void fill_data_queue(std::unique_ptr<RGBDdata> p_data)
+    //! Callbacks
+    void fill_data_queue(Frame::UniquePtr p_frame)
     {
-        m_rgbd_data_queue.pushBlockingIfFull(std::move(p_data), 20u);
+        m_input_frame_queue.pushBlockingIfFull(std::move(p_frame), 20u);
+    }
+
+    void fill_mask_image_queue(MaskedImage::UniquePtr p_masked_image)
+    {
+        m_input_mask_queue.pushBlockingIfFull(std::move(p_masked_image), 20u);
+    }
+
+    //TODO: move the FrameCallback typedef to frame class
+    void register_callback(const DataReader::FrameCallback& r_callback)
+    {
+        m_transport_callback = r_callback;
     }
 
   private:
+    Frame::UniquePtr getInput(void);
     bool process(void) override;
-    /* data */
-    /* std::shared_ptr<oslam::RGBDdataset> mp_dataset; */
+
     std::shared_ptr<oslam::ImageTransporter> mp_image_transport;
 
     unsigned int m_curr_frame_id;
 
-    ThreadsafeQueue<std::unique_ptr<RGBDdata>> m_rgbd_data_queue;
+    ThreadsafeQueue<Frame::UniquePtr> m_input_frame_queue;
+    ThreadsafeQueue<MaskedImage::UniquePtr> m_input_mask_queue;
 
-    std::shared_ptr<oslam::Frame> mp_current_frame;
-    std::shared_ptr<oslam::Frame> mp_prev_frame;
+    //! Calls the ImageTransporter object to fill its queue
+    DataReader::FrameCallback m_transport_callback;
+
+    //TODO(Akash): Change this to UniquePtrs later for sanity
+    Frame::UniquePtr mp_current_frame;
+    Frame::UniquePtr mp_prev_frame;
 };
 }// namespace oslam
 
