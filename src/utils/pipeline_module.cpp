@@ -6,12 +6,6 @@
  * See LICENSE for the license information
  * -------------------------------------------------------------------------- */
 
-/**
- * @file   PipelineModule.cpp
- * @brief  Implements a VIO pipeline module.
- * @author Antoni Rosinol
- */
+#include "pipeline_module.h"
 
-#include "kimera-vio/pipeline/PipelineModule.h"
-
-namespace oslam {}  // namespace VIO
+namespace oslam {}  // namespace oslam
