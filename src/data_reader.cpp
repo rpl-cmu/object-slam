@@ -80,7 +80,7 @@ bool DataReader::parse_dataset(void)
 
 bool DataReader::read_frame(void)
 {
-    if (m_current_index > m_size) return false;
+    if (m_current_index >= m_size) return false;
 
     using namespace open3d::io;
 
@@ -99,15 +99,16 @@ bool DataReader::read_frame(void)
     // TODO:(Akash) Read ground truth pose from file conditionally based on input parameter
     /* p_data->gt_pose = Eigen::Matrix4d::Identity(); */
 
-    for (const FrameCallback &callback : m_callbacks) {
-        callback(std::make_unique<Frame>(m_current_index,
-          m_intrinsic,
-          color,
-          depth,
-          gt_mask,
-          (m_current_index % 30) ? true : false));
-    }
+    // Every 10th frame requires semantic segmentation
+    m_provider_callback(std::make_unique<Frame>(
+      m_current_index+1, m_intrinsic, color, depth, ((m_current_index % 10) == 0) ? true : false));
     return true;
+}
+
+void DataReader::shutdown(void)
+{
+    spdlog::info("Shutting down DataReader on demand");
+    m_shutdown = true;
 }
 
 }// namespace oslam

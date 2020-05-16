@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "macros.h"
+#include "queue_synchroniser.h"
 #include "thread_safe_queue.h"
 #include "timer.h"
 
@@ -93,15 +94,15 @@ class PipelineModuleBase
      * this->name_id_ is used for the name_id parameter.
      */
     // TODO(Akash): Evaluate whether we need this later
-    /* template<class T> */
-    /* bool syncQueue(const Timestamp &timestamp, */
-    /*   ThreadsafeQueue<T> *queue, */
-    /*   T *pipeline_payload, */
-    /*   int max_iterations = 10) */
-    /* { */
-    /*     return SimpleQueueSynchronizer<T>::getInstance().syncQueue( */
-    /*       timestamp, queue, pipeline_payload, name_id_, max_iterations); */
-    /* } */
+    template<class T>
+    bool syncQueue(const Timestamp &timestamp,
+      ThreadsafeQueue<T> *queue,
+      T *pipeline_payload,
+      int max_iterations = 10)
+    {
+        return SimpleQueueSynchronizer<T>::getInstance().syncQueue(
+          timestamp, queue, pipeline_payload, name_id_, max_iterations);
+    }
     /**
      * @brief shutdown_queues If the module stores Threadsafe queues, it must
      * shutdown those for a complete shutdown.
@@ -202,9 +203,9 @@ template<typename Input, typename Output> class PipelineModule : public Pipeline
                     notify_on_failure();
                 }
                 auto spin_duration = oslam::Timer::toc(tic).count();
-                spdlog::debug("Spin duration - Module: {}", spin_duration);
+                spdlog::debug("Spin duration - Module: {} ms", spin_duration);
             } else {
-                spdlog::trace("Module {} - No input received", name_id_);
+                spdlog::debug("Module {} - No input received", name_id_);
             }
         }
         is_thread_working_ = false;
@@ -278,7 +279,7 @@ class MIMOPipelineModule : public PipelineModule<Input, Output>
     //! shared pointer since the data may be shared between several modules.
     using OutputCallback = std::function<void(const typename PIO::OutputSharedPtr &output)>;
 
-    MIMOPipelineModule(const std::string &name_id)
+    explicit MIMOPipelineModule(const std::string &name_id)
       : PipelineModule<Input, Output>(name_id), output_callbacks_()
     {}
     virtual ~MIMOPipelineModule() = default;
@@ -445,8 +446,14 @@ class MISOPipelineModule : public MIMOPipelineModule<Input, Output>
      */
     inline bool push_output_packet(typename MIMO::OutputUniquePtr output_packet) const override
     {
+        if(output_queue_)
+        {
+            output_queue_->push(std::move(output_packet));
+            return true;
+        }
+        return false;
         //TODO(Akash): Is this correct?
-        return output_queue_ ? output_queue_->push(std::move(output_packet)) : true;
+        /* return output_queue_ ? output_queue_->push(std::move(output_packet)) : true; */
     }
 
     //! Called when general shutdown of PipelineModule is triggered.

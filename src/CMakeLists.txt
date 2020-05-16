@@ -8,13 +8,15 @@ find_package(OpenCV REQUIRED)
 add_executable(
   reconstruct
   main.cpp
+  frame.cpp
+  masked_image.cpp
   controller.cpp
   data_reader.cpp
-  frame.cpp
+  data_provider.cpp
   image_transport.cpp
   tracker.cpp
-  tsdf_object.cpp
-  map.cpp
+  # tsdf_object.cpp
+  # map.cpp
 )
 add_subdirectory(utils)
 

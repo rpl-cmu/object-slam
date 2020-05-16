@@ -14,8 +14,10 @@
 #include <Open3D/Open3D.h>
 #include <zmq.hpp>
 
+#include "utils/macros.h"
 #include "utils/thread_class.h"
 #include "data_reader.h"
+#include "data_provider.h"
 #include "image_transport.h"
 #include "tracker.h"
 #include "map.h"
@@ -41,11 +43,16 @@ class Controller
 
     std::shared_ptr<GlobalMap> mp_global_map;
 
-    std::shared_ptr<DataReader> mp_data_reader;
-    std::shared_ptr<ImageTransporter> mp_image_transport;
-    std::shared_ptr<Tracker> mp_tracker;
+    DataReader::Ptr mp_data_reader;
+    DataProvider::Ptr mp_data_provider;
+    ImageTransporter::Ptr mp_image_transport;
+    Tracker::Ptr mp_tracker;
 
-    std::shared_ptr<zmq::context_t> mp_context;
+    DataProvider::InputQueue m_data_provider_input_queue;
+    ImageTransporter::InputQueue m_transport_frame_queue;
+    ImageTransporter::OutputQueue m_masked_image_queue;
+
+
 };
 }// namespace oslam
 #endif /* ifndef OSLAM_CONTROLLER_H */

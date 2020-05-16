@@ -13,24 +13,10 @@
 #include <vector>
 
 #include "utils/macros.h"
+#include "utils/pipeline_payload.h"
+#include "masked_image.h"
 
 namespace oslam {
-
-struct ImageProperties
-{
-    int width;
-    int height;
-    int num_of_channels;
-    int bytes_per_channel;
-};
-
-struct MaskedImage
-{
-    OSLAM_POINTER_TYPEDEFS(MaskedImage);
-    open3d::geometry::Image image;
-    std::vector<unsigned int> labels;
-    std::vector<double> scores;
-};
 
 struct Odometry
 {
@@ -46,63 +32,84 @@ struct Odometry
 /*! \class Frame
  *  \brief Encapsulation data structure for a single RGBD frame
  */
-class Frame
+class Frame : public PipelinePayload
 {
   public:
     OSLAM_POINTER_TYPEDEFS(Frame);
 
-    explicit Frame(std::size_t frame_id,
-          open3d::camera::PinholeCameraIntrinsic intrinsic,
-          open3d::geometry::Image color,
-          open3d::geometry::Image depth,
-          open3d::geometry::Image gt_mask,
-          bool is_keyframe = false,
-          const std::vector<unsigned int> & r_gt_labels = {},
-          const std::vector<double> &r_gt_scores = {}
-         );
+    //! Constructor
+    //! Frame maintains a reference to the images.
+    //! Required to clone if frame needs to own the images
+    //! TODO(Akash): Is it safe to maintain a reference to non-owned Image objects?
+    //! TODO(Akash): Open3D does not provide clone API for images..
+    explicit Frame(std::uint64_t frame_id,
+      open3d::camera::PinholeCameraIntrinsic intrinsic,
+      const open3d::geometry::Image &r_color,
+      const open3d::geometry::Image &r_depth,
+      bool is_maskframe = false,
+      const open3d::geometry::Image &r_gt_mask = open3d::geometry::Image(),
+      const std::vector<unsigned int> &r_gt_labels = {},
+      const std::vector<double> &r_gt_scores = {});
+
     virtual ~Frame() = default;
 
-    std::shared_ptr<Odometry> odometry(std::shared_ptr<Frame> p_target_frame,
-      const Eigen::Matrix4d &r_init_transformation = Eigen::Matrix4d::Identity());
-    void process_mask(std::unique_ptr<oslam::MaskedImage> p_masked_image);
+    //! Copy constructor
+    Frame(const Frame &r_frame)
+      : PipelinePayload(r_frame.m_timestamp), m_intrinsic(r_frame.m_intrinsic),
+        m_color(r_frame.m_color), m_depth(r_frame.m_depth), m_is_maskframe(r_frame.m_is_maskframe),
+        m_gt_mask(r_frame.m_gt_mask)
+    {
+        mp_rgbd =
+          open3d::geometry::RGBDImage::CreateFromColorAndDepth(m_color, m_depth, 1000, 3.0, false);
+    };
 
-    void visualize();
+    //! Required for image transport
+    inline open3d::geometry::Image get_color(void) { return m_color; }
+    inline open3d::geometry::Image get_depth(void) { return m_depth; }
 
+    //! Required for Odometry functions
     inline std::shared_ptr<open3d::geometry::RGBDImage> get_rgbd(void) const { return mp_rgbd; }
-    /* inline std::vector<std::shared_ptr<open3d::geometry::RGBDImage>> get_objects(void) { return mv_object_rgbd; } */
+
     inline Eigen::Matrix4d get_pose(void) const { return m_pose; }
     inline void set_pose(Eigen::Matrix4d pose) { m_pose = std::move(pose); }
 
-    inline open3d::geometry::Image get_color_image(void) const { return m_color; }
+    inline bool is_maskframe() const { return m_is_maskframe; }
 
-    inline bool is_keyframe() const { return m_is_keyframe; }
-    inline bool has_segmentation(void) const { return mp_masked_image? true : false;}
-    inline void set_segmentation(MaskedImage::UniquePtr p_masked_image)
-    {
-        mp_masked_image = std::move(p_masked_image);
-    }
 
-    std::vector<unsigned int> m_labels;
-    std::vector<double> m_scores;
-    std::vector<std::shared_ptr<open3d::geometry::RGBDImage>> mv_object_rgbd;
+    //! TODO(Akash): Reconsider when required
+    /* std::shared_ptr<Odometry> odometry(std::shared_ptr<Frame> p_target_frame, */
+    /*   const Eigen::Matrix4d &r_init_transformation = Eigen::Matrix4d::Identity()); */
+    /* void process_mask(std::unique_ptr<oslam::MaskedImage> p_masked_image); */
+    /* void visualize(); */
+    //! Required for object masks generated from masked image
+    /* std::vector<unsigned int> m_labels; */
+    /* std::vector<double> m_scores; */
+    /* std::vector<std::shared_ptr<open3d::geometry::RGBDImage>> mv_object_rgbd; */
+    /* inline bool has_segmentation(void) const { return mp_masked_image ? true : false; } */
+    /* inline void set_segmentation(MaskedImage::UniquePtr p_masked_image) */
+    /* { */
+    /*     mp_masked_image = std::move(p_masked_image); */
+    /* } */
+
   private:
-    std::size_t m_frame_id;
+    //! Camera intrinsics
     open3d::camera::PinholeCameraIntrinsic m_intrinsic;
-    //TODO(Akash): Should this be constant? For now atleast
-    const bool m_is_keyframe = {false};
 
+    //! Color and depth images
     open3d::geometry::Image m_color;
     open3d::geometry::Image m_depth;
-    open3d::geometry::Image m_gt_mask;
-    std::vector<unsigned int> m_gt_labels;
-    std::vector<double> m_gt_scores;
 
-    MaskedImage::UniquePtr mp_masked_image = {nullptr};
+    //! We decide at read whether a frame needs instance segmentation
+    const bool m_is_maskframe = { false };
 
-    Eigen::Matrix4d m_pose;
+    //! Groundtruth segmentation mask and labels/scores from dataset if available
+    MaskedImage m_gt_mask;
 
+    //! Pose of the frame
+    Eigen::Matrix4d m_pose = Eigen::Matrix4d::Identity();
+
+    //! RGBD object of the frame constructed from color and depth images
     std::shared_ptr<open3d::geometry::RGBDImage> mp_rgbd;
-    std::shared_ptr<open3d::geometry::PointCloud> mp_pcd;
 };
 }// namespace oslam
 #endif /* ifndef OSLAM_FRAME_H */

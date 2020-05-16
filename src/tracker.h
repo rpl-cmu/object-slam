@@ -12,54 +12,50 @@
 #include <mutex>
 #include <thread>
 
-#include "utils/thread_class.h"
-#include "data_reader.h"
-#include "image_transport.h"
-#include "frame.h"
+#include "utils/macros.h"
+#include "utils/pipeline_module.h"
 #include "utils/thread_safe_queue.h"
+
+#include "tracker_payload.h"
+
 
 
 namespace oslam {
-class Tracker: public Thread
+
+/*! \class Tracker
+ *  \brief Brief class description
+ *
+ *  Detailed description
+ */
+class Tracker : public MISOPipelineModule<TrackerPayload, NullPipelinePayload>
 {
-  public:
-    explicit Tracker(std::shared_ptr<oslam::ImageTransporter> p_image_transport);
-    virtual ~Tracker();
+public:
+    OSLAM_POINTER_TYPEDEFS(Tracker);
+    OSLAM_DELETE_COPY_CONSTRUCTORS(Tracker);
 
-    //! Callbacks
-    void fill_data_queue(Frame::UniquePtr p_frame)
+    using MISO = MISOPipelineModule<TrackerPayload, NullPipelinePayload>;
+    using MaskedImageQueue = ThreadsafeQueue<MaskedImage::UniquePtr>;
+
+    explicit Tracker(MaskedImageQueue* p_masked_image_queue, OutputQueue* p_output_queue);
+    virtual ~Tracker() = default;
+
+    void fill_frame_queue(Frame::Ptr p_frame)
     {
-        m_input_frame_queue.pushBlockingIfFull(std::move(p_frame), 20u);
+        m_frame_queue.push(std::make_unique<Frame>(*p_frame));
     }
 
-    void fill_mask_image_queue(MaskedImage::UniquePtr p_masked_image)
-    {
-        m_input_mask_queue.pushBlockingIfFull(std::move(p_masked_image), 20u);
-    }
+    virtual OutputUniquePtr run_once(InputUniquePtr p_input) override;
 
-    //TODO: move the FrameCallback typedef to frame class
-    void register_callback(const DataReader::FrameCallback& r_callback)
-    {
-        m_transport_callback = r_callback;
-    }
+    virtual bool has_work() const override { return true; }
 
-  private:
-    Frame::UniquePtr getInput(void);
-    bool process(void) override;
 
-    std::shared_ptr<oslam::ImageTransporter> mp_image_transport;
+private:
 
-    unsigned int m_curr_frame_id;
+    InputUniquePtr get_input_packet() override;
+    //! Input Queues which are to be synchronised
+    ThreadsafeQueue<Frame::UniquePtr> m_frame_queue;
+    MaskedImageQueue* mp_masked_image_queue;
 
-    ThreadsafeQueue<Frame::UniquePtr> m_input_frame_queue;
-    ThreadsafeQueue<MaskedImage::UniquePtr> m_input_mask_queue;
-
-    //! Calls the ImageTransporter object to fill its queue
-    DataReader::FrameCallback m_transport_callback;
-
-    //TODO(Akash): Change this to UniquePtrs later for sanity
-    Frame::UniquePtr mp_current_frame;
-    Frame::UniquePtr mp_prev_frame;
 };
 }// namespace oslam
 

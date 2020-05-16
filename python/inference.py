@@ -96,23 +96,20 @@ def main():
 
     cfg = create_cfg(config_file, weights_file)
     predictor = DefaultPredictor(cfg)
+    idx = 0
     while True:
         try:
             # Receiving image in bytes
             color_image = ColorImage()
             data = reply_sock.recv()
             color_image.ParseFromString(data)
-            print(color_image.width)
-            print(color_image.height)
-            print(color_image.num_channels)
             image_bytes = np.frombuffer(color_image.data, dtype=np.uint8)
             image = np.reshape(image_bytes, (color_image.width, color_image.height, color_image.num_channels))
             image = image[20:-20, 20:-20]
-            print(image.shape)
+            print(f"Processing request: {idx}")
             predictions = predictor(image)
             processed_image, classes, scores = get_masks(predictions, image)
             processed_image = np.pad(processed_image, 20, 'constant')
-            print(processed_image.shape)
             mask_image = MaskImage()
             mask_image.width = color_image.width
             mask_image.height = color_image.height
@@ -123,6 +120,7 @@ def main():
             mask_image.scores.extend(scores)
 
             reply_sock.send(mask_image.SerializeToString())
+            idx += 1
         except KeyboardInterrupt:
             print("Keyboard interrupt received stopping")
             reply_sock.close()

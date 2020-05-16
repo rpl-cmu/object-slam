@@ -35,19 +35,27 @@ namespace fs = boost::filesystem;
 class DataReader
 {
   public:
-      OSLAM_POINTER_TYPEDEFS(DataReader);
+    OSLAM_POINTER_TYPEDEFS(DataReader);
+    OSLAM_DELETE_COPY_CONSTRUCTORS(DataReader);
 
     typedef std::function<void(Frame::UniquePtr)> FrameCallback;
 
     explicit DataReader(const std::string &r_root_dir);
     virtual ~DataReader() = default;
 
-    DataReader(const DataReader&) = delete;
-    DataReader& operator=(const DataReader&) = delete;
+    /*! \brief Runs through the dataset folder to read all files
+     *  - unless explicitly stopped
+     *  - all the files have been read
+     */
+    bool run();
 
-    void register_callback(const FrameCallback &r_callback) { m_callbacks.push_back(r_callback); }
+    //! \brief Shutdown the data_reader on demand
+    void shutdown(void);
 
-    bool run(void);
+    inline void register_provider_callback(const FrameCallback &r_callback)
+    {
+        m_provider_callback = r_callback;
+    }
 
   protected:
     bool parse_dataset(void);
@@ -75,7 +83,7 @@ class DataReader
     open3d::camera::PinholeCameraIntrinsic m_intrinsic;
 
     //! Vector of callbacks called when data available
-    std::vector<FrameCallback> m_callbacks;
+    FrameCallback m_provider_callback;
 
     //! Shutdown switch
     std::atomic_bool m_shutdown = { false };

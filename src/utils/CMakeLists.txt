@@ -1,4 +1,4 @@
 target_sources(reconstruct
     PUBLIC
-    # pipeline_module.cpp
+    pipeline_module.cpp
     )
