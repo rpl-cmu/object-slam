@@ -18,6 +18,8 @@
 
 namespace oslam {
 
+    using namespace open3d;
+
 struct Odometry
 {
     Eigen::Matrix4d transform;
@@ -43,11 +45,11 @@ class Frame : public PipelinePayload
     //! TODO(Akash): Is it safe to maintain a reference to non-owned Image objects?
     //! TODO(Akash): Open3D does not provide clone API for images..
     explicit Frame(std::uint64_t frame_id,
-      open3d::camera::PinholeCameraIntrinsic intrinsic,
-      const open3d::geometry::Image &r_color,
-      const open3d::geometry::Image &r_depth,
+      camera::PinholeCameraIntrinsic intrinsic,
+      const geometry::Image &r_color,
+      const geometry::Image &r_depth,
       bool is_maskframe = false,
-      const open3d::geometry::Image &r_gt_mask = open3d::geometry::Image(),
+      const geometry::Image &r_gt_mask = geometry::Image(),
       const std::vector<unsigned int> &r_gt_labels = {},
       const std::vector<double> &r_gt_scores = {});
 
@@ -60,15 +62,17 @@ class Frame : public PipelinePayload
         m_gt_mask(r_frame.m_gt_mask)
     {
         mp_rgbd =
-          open3d::geometry::RGBDImage::CreateFromColorAndDepth(m_color, m_depth, 1000, 3.0, false);
+          geometry::RGBDImage::CreateFromColorAndDepth(m_color, m_depth, 1000, 3.0, false);
     };
 
     //! Required for image transport
-    inline open3d::geometry::Image get_color(void) { return m_color; }
-    inline open3d::geometry::Image get_depth(void) { return m_depth; }
+    inline geometry::Image get_color(void) const { return m_color; }
+    inline geometry::Image get_depth(void) const { return m_depth; }
+
+    inline camera::PinholeCameraIntrinsic get_intrinsics(void) const { return m_intrinsic; }
 
     //! Required for Odometry functions
-    inline std::shared_ptr<open3d::geometry::RGBDImage> get_rgbd(void) const { return mp_rgbd; }
+    inline std::shared_ptr<geometry::RGBDImage> get_rgbd(void) const { return mp_rgbd; }
 
     inline Eigen::Matrix4d get_pose(void) const { return m_pose; }
     inline void set_pose(Eigen::Matrix4d pose) { m_pose = std::move(pose); }
@@ -84,7 +88,7 @@ class Frame : public PipelinePayload
     //! Required for object masks generated from masked image
     /* std::vector<unsigned int> m_labels; */
     /* std::vector<double> m_scores; */
-    /* std::vector<std::shared_ptr<open3d::geometry::RGBDImage>> mv_object_rgbd; */
+    /* std::vector<std::shared_ptr<geometry::RGBDImage>> mv_object_rgbd; */
     /* inline bool has_segmentation(void) const { return mp_masked_image ? true : false; } */
     /* inline void set_segmentation(MaskedImage::UniquePtr p_masked_image) */
     /* { */
@@ -93,11 +97,11 @@ class Frame : public PipelinePayload
 
   private:
     //! Camera intrinsics
-    open3d::camera::PinholeCameraIntrinsic m_intrinsic;
+    camera::PinholeCameraIntrinsic m_intrinsic;
 
     //! Color and depth images
-    open3d::geometry::Image m_color;
-    open3d::geometry::Image m_depth;
+    geometry::Image m_color;
+    geometry::Image m_depth;
 
     //! We decide at read whether a frame needs instance segmentation
     const bool m_is_maskframe = { false };
@@ -109,7 +113,7 @@ class Frame : public PipelinePayload
     Eigen::Matrix4d m_pose = Eigen::Matrix4d::Identity();
 
     //! RGBD object of the frame constructed from color and depth images
-    std::shared_ptr<open3d::geometry::RGBDImage> mp_rgbd;
+    std::shared_ptr<geometry::RGBDImage> mp_rgbd;
 };
 }// namespace oslam
 #endif /* ifndef OSLAM_FRAME_H */

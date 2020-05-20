@@ -9,7 +9,7 @@
 
 namespace oslam {
     DataProvider::DataProvider(InputQueue* p_input_queue)
-        : SIMO(p_input_queue, "DataProviderModule")
+        : SIMO(p_input_queue, "DataProvider")
     {
     }
 

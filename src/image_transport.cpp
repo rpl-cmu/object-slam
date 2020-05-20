@@ -15,7 +15,7 @@
 namespace oslam {
 
 ImageTransporter::ImageTransporter(SISO::InputQueue* p_input_queue, SISO::OutputQueue* p_output_queue)
-    :SISO(p_input_queue, p_output_queue, "ImageTransporterModule"), m_request_sock(m_context, ZMQ_REQ)
+    :SISO(p_input_queue, p_output_queue, "ImageTransporter"), m_request_sock(m_context, ZMQ_REQ)
 {
     m_request_sock.connect(SERVER_ENDPOINT);
     spdlog::info("Connected C++ client to ENDPOINT: {}", SERVER_ENDPOINT);

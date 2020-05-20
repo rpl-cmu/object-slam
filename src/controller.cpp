@@ -10,6 +10,7 @@
 #include <vector>
 #include <future>
 
+#include <Cuda/Common/UtilsCuda.h>
 #include "map.h"
 
 namespace oslam {
@@ -36,6 +37,7 @@ int Controller::start()
 
 bool Controller::setup()
 {
+    CheckCuda(cudaSetDevice(0));
     mp_data_reader = std::make_shared<oslam::DataReader>(m_dataset_path);
     mp_data_provider = std::make_shared<oslam::DataProvider>(&m_data_provider_input_queue);
     mp_image_transport =

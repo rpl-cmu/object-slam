@@ -12,6 +12,8 @@
 #include <mutex>
 #include <thread>
 
+#include <Cuda/Camera/PinholeCameraIntrinsicCuda.h>
+#include <Cuda/Geometry/ImageCuda.h>
 #include "utils/macros.h"
 #include "utils/pipeline_module.h"
 #include "utils/thread_safe_queue.h"
@@ -36,6 +38,7 @@ public:
     using MISO = MISOPipelineModule<TrackerPayload, NullPipelinePayload>;
     using MaskedImageQueue = ThreadsafeQueue<MaskedImage::UniquePtr>;
 
+
     explicit Tracker(MaskedImageQueue* p_masked_image_queue, OutputQueue* p_output_queue);
     virtual ~Tracker() = default;
 
@@ -50,12 +53,30 @@ public:
 
 
 private:
-
     InputUniquePtr get_input_packet() override;
+
+    bool m_first_run = {true};
+
     //! Input Queues which are to be synchronised
     ThreadsafeQueue<Frame::UniquePtr> m_frame_queue;
     MaskedImageQueue* mp_masked_image_queue;
+    MaskedImage::UniquePtr mp_prev_masked_image;
 
+    Timestamp m_curr_timestamp = 0;
+
+    //! Camera intrinsics
+    cuda::PinholeCameraIntrinsicCuda mc_intrinsic;
+
+    cuda::ImageCuda<float, 1> mc_curr_depth_raw;
+    cuda::ImageCuda<float, 1> mc_curr_depth_filt;
+    cuda::ImageCuda<uchar, 3> mc_curr_color;
+    //! TODO(Akash): Consider coarse-to-fine ICP
+    cuda::ImageCuda<float, 3> mc_curr_vertex_map;
+    cuda::ImageCuda<float, 3> mc_curr_normal_map;
+
+    //! Previous frame vertex and normal map in global coordinates
+    cuda::ImageCuda<float, 3> mc_g_prev_vertex_map;
+    cuda::ImageCuda<float, 3> mc_g_prev_normal_map;
 };
 }// namespace oslam
 

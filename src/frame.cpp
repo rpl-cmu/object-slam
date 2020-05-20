@@ -23,11 +23,12 @@ Frame::Frame(std::size_t frame_id,
   const open3d::geometry::Image &r_gt_mask,
   const std::vector<unsigned int> &r_gt_labels,
   const std::vector<double> &r_gt_scores)
-  : PipelinePayload(frame_id), m_intrinsic(intrinsic), m_color(r_color), m_depth(r_depth),
+  : PipelinePayload(frame_id), m_intrinsic(intrinsic), m_color(r_color),
     m_is_maskframe(is_maskframe), m_gt_mask(frame_id, r_gt_mask, r_gt_labels, r_gt_scores)
 {
     mp_rgbd =
-      open3d::geometry::RGBDImage::CreateFromColorAndDepth(m_color, m_depth, 1000, 3.0, false);
+      open3d::geometry::RGBDImage::CreateFromColorAndDepth(m_color, r_depth, 1000, 3.0, false);
+    m_depth = mp_rgbd->depth_;
 }
 
 //!TODO(Akash): Reconsider when required

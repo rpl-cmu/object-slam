@@ -196,20 +196,20 @@ template<typename Input, typename Output> class PipelineModule : public Pipeline
                 if (output) {
                     // Received a valid output, send to output queue
                     if (!push_output_packet(std::move(output))) {
-                        spdlog::warn("Module {} - Output push failed", name_id_);
+                        spdlog::warn("Module: {} - Output push failed", name_id_);
                     }
                 } else {
                     // Notify interested parties about failure.
                     notify_on_failure();
                 }
                 auto spin_duration = oslam::Timer::toc(tic).count();
-                spdlog::debug("Spin duration - Module: {} ms", spin_duration);
+                spdlog::debug("Module: {} Spin Duration: {} ms", name_id_, spin_duration);
             } else {
-                spdlog::debug("Module {} - No input received", name_id_);
+                spdlog::debug("Module: {} - No input received", name_id_);
             }
         }
         is_thread_working_ = false;
-        spdlog::trace("Module {} - Successful shutdown", name_id_);
+        spdlog::trace("{} - Successful shutdown", name_id_);
         return false;
     }
 

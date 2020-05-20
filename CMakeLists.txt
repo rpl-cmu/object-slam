@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(object-slam LANGUAGES CXX)
+project(object-slam LANGUAGES CXX CUDA)
 include(cmake/StandardProjectSettings.cmake)
 
 add_library(project_options INTERFACE)
 target_compile_features(project_options INTERFACE cxx_std_17)
+
 
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
 add_library(project_warnings INTERFACE)

@@ -1,9 +1,8 @@
 find_package(GTSAM REQUIRED)
-find_package(Open3D REQUIRED)
+find_package(Open3D REQUIRED COMPONENTS Open3DCuda)
 find_package(Boost REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(OpenCV REQUIRED)
-
+find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui)
 
 add_executable(
   reconstruct
@@ -30,8 +29,10 @@ target_link_libraries(
   Boost::filesystem
   Eigen3::Eigen
   Open3D::Open3D
+  Open3D::Open3DCuda
   opencv_core
   opencv_highgui
+  opencv_imgproc
   ${CMAKE_DL_LIBS}
   proto
 )
