@@ -14,11 +14,14 @@
 
 #include <Cuda/Camera/PinholeCameraIntrinsicCuda.h>
 #include <Cuda/Geometry/ImageCuda.h>
+#include <Cuda/Registration/RegistrationCuda.h>
+#include <vector>
 #include "utils/macros.h"
 #include "utils/pipeline_module.h"
 #include "utils/thread_safe_queue.h"
 
 #include "tracker_payload.h"
+#include "map.h"
 
 
 
@@ -53,7 +56,7 @@ public:
 
 
 private:
-    InputUniquePtr get_input_packet() override;
+    virtual InputUniquePtr get_input_packet() override;
 
     bool m_first_run = {true};
 
@@ -62,14 +65,21 @@ private:
     MaskedImageQueue* mp_masked_image_queue;
     MaskedImage::UniquePtr mp_prev_masked_image;
 
+    //! Reference to the global map
+    GlobalMap &mr_global_map;
+
+    //! Current timestamp being processed
     Timestamp m_curr_timestamp = 0;
 
+    //! Vector of trajectory poses w.r.t world coordinate
+    std::vector<Eigen::Matrix4d> mv_T_camera_2_world;
     //! Camera intrinsics
     cuda::PinholeCameraIntrinsicCuda mc_intrinsic;
 
     cuda::ImageCuda<float, 1> mc_curr_depth_raw;
     cuda::ImageCuda<float, 1> mc_curr_depth_filt;
     cuda::ImageCuda<uchar, 3> mc_curr_color;
+
     //! TODO(Akash): Consider coarse-to-fine ICP
     cuda::ImageCuda<float, 3> mc_curr_vertex_map;
     cuda::ImageCuda<float, 3> mc_curr_normal_map;
@@ -77,6 +87,7 @@ private:
     //! Previous frame vertex and normal map in global coordinates
     cuda::ImageCuda<float, 3> mc_g_prev_vertex_map;
     cuda::ImageCuda<float, 3> mc_g_prev_normal_map;
+    cuda::ImageCuda<uchar, 3> mc_g_prev_color;
 };
 }// namespace oslam
 

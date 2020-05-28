@@ -102,6 +102,7 @@ void Controller::run()
     /* spdlog::info( */
     /*   "{}, {}", handle_dataset.get(), handle_image_transport.get()); */
 
+    handle_tracker.get();
     handle_dataset.get();
     handle_provider.get();
     handle_image_transport.get();

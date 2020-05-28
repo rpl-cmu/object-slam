@@ -9,6 +9,7 @@
 #define OSLAM_MASKED_IMAGE_H
 
 #include <Open3D/Open3D.h>
+#include <opencv2/core/mat.hpp>
 
 #include "utils/pipeline_payload.h"
 
@@ -19,7 +20,7 @@ namespace oslam {
  *
  *  Detailed description
  */
-class MaskedImage : public PipelinePayload
+struct MaskedImage : public PipelinePayload
 {
     typedef std::vector<std::shared_ptr<open3d::geometry::RGBDImage>> ObjectRGBDVector;
 
@@ -34,23 +35,16 @@ class MaskedImage : public PipelinePayload
 
     MaskedImage(const MaskedImage &r_masked_image)
       : PipelinePayload(r_masked_image.m_timestamp), m_image(r_masked_image.m_image),
-        m_labels(r_masked_image.m_labels), m_scores(r_masked_image.m_scores),
-        mv_rgbd_objects(r_masked_image.mv_rgbd_objects)
+        m_labels(r_masked_image.m_labels), m_scores(r_masked_image.m_scores)
     {}
 
-    //! Check whether the MaskedImage contains object RGBD list
-    inline bool has_objects(void) const { return mv_rgbd_objects.size() > 0; }
-
     //! Generate separate object masks from the masked image
-    void process_image(open3d::geometry::Image &r_color,
-      open3d::geometry::Image &r_depth);
+    std::vector<cv::Mat> process(void);
 
-  private:
+  public:
     open3d::geometry::Image m_image;
     std::vector<unsigned int> m_labels;
     std::vector<double> m_scores;
-
-    ObjectRGBDVector mv_rgbd_objects;
 };
 }// namespace oslam
 

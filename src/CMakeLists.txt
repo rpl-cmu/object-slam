@@ -14,9 +14,10 @@ add_executable(
   data_provider.cpp
   image_transport.cpp
   tracker.cpp
-  # tsdf_object.cpp
-  # map.cpp
+  tsdf_object.cpp
+  map.cpp
 )
+
 add_subdirectory(utils)
 
 target_link_libraries(
