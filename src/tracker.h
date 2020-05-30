@@ -76,8 +76,7 @@ private:
     //! Camera intrinsics
     cuda::PinholeCameraIntrinsicCuda mc_intrinsic;
 
-    cuda::ImageCuda<float, 1> mc_curr_depth_raw;
-    cuda::ImageCuda<float, 1> mc_curr_depth_filt;
+    cuda::ImageCuda<ushort, 1> mc_curr_depth_raw;
     cuda::ImageCuda<uchar, 3> mc_curr_color;
 
     //! TODO(Akash): Consider coarse-to-fine ICP

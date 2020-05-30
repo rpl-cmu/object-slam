@@ -71,26 +71,13 @@ void TSDFObject::integrate(open3d::geometry::Image &r_color,
       r_depth.width_, r_depth.height_, r_depth.num_of_channels_, r_depth.bytes_per_channel_);
     o3d_object_depth.data_.assign(object_depth.datastart, object_depth.dataend);
 
-    /* open3d::geometry::RGBDImage object_rgbd(r_color, o3d_object_depth); */
-    /* std::shared_ptr<open3d::geometry::PointCloud> p_pcd = open3d::geometry::PointCloud::CreateFromRGBDImage(object_rgbd, intrinsics); */
-
-    /* open3d::visualization::DrawGeometries({ p_pcd }, "Object pointcloud"); */
     open3d::cuda::RGBDImageCuda c_object_rgbd(r_color.width_, r_color.height_, 3.0f, 1000.0f);
     c_object_rgbd.Upload(o3d_object_depth, r_color);
 
-    /* open3d::cuda::PointCloudCuda c_pcd(open3d::cuda::VertexWithColor, r_color.width_ * r_color.height_); */
-    /* c_pcd.Build(c_object_rgbd, mc_intrinsic); */
-
-    /* std::shared_ptr<open3d::geometry::PointCloud> download_pcl = c_pcd.Download(); */
-
-    /* open3d::visualization::DrawGeometries({ download_pcl }, "Downloaded PCL"); */
-    //! T_camera_2_object =  T_camera_2_world.inverse * T_object_2_world
-    /* Eigen::Matrix4d T_object_2_camera = camera_pose.inverse() * m_pose; */
-    /* spdlog::debug("Current background pose\n {}", camera_pose); */
     open3d::cuda::TransformCuda c_object_2_world;
     c_object_2_world.FromEigen(camera_pose);
 
-    mpc_object_volume->Integrate(c_object_rgbd, mc_intrinsic,c_object_2_world);
+    mpc_object_volume->Integrate(c_object_rgbd, mc_intrinsic, c_object_2_world);
 
     /* mpc_object_volume->GetAllSubvolumes(); */
 
@@ -102,9 +89,7 @@ void TSDFObject::integrate(open3d::geometry::Image &r_color,
 
     /* auto mesh = mesher.mesh().Download(); */
 
-    /* spdlog::debug("Showing mesh"); */
     /* open3d::visualization::DrawGeometries({ mesh }, "Mesh after integration"); */
-    /* spdlog::debug("Done showing mesh"); */
 }
 
 void TSDFObject::raycast(open3d::cuda::ImageCuda<float, 3> &vertex,

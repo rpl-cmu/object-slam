@@ -23,18 +23,16 @@ void GlobalMap::add_background(open3d::geometry::Image &r_color,
   open3d::geometry::Image &r_depth,
   open3d::cuda::PinholeCameraIntrinsicCuda &r_intrinsic,
   open3d::camera::PinholeCameraIntrinsic intrinsics,
-  Eigen::Matrix4d &r_camera_pose)
+  const Eigen::Matrix4d &r_camera_pose)
 {
     //! Don't allow other objects to be added to vector
     std::scoped_lock<std::mutex> add_background_lock(m_map_mutex);
     TSDFObject::UniquePtr p_background =
-      std::make_unique<TSDFObject>(r_color, r_depth, 0, 100.0, r_intrinsic, r_camera_pose, 256);
+      std::make_unique<TSDFObject>(r_color, r_depth, 0, 100.0, r_intrinsic, r_camera_pose, 512);
 
     cv::Mat mask = cv::Mat::ones(r_depth.height_, r_depth.width_, CV_8U);
     mask = (mask >= 0);
 
-    spdlog::debug("Integrating first frame into volume");
-    p_background->integrate(r_color, r_depth, mask, intrinsics, r_camera_pose);
     mv_objects.push_back(std::move(p_background));
 }
 void GlobalMap::add_object(open3d::geometry::Image &r_color,
@@ -85,7 +83,6 @@ void GlobalMap::raycast_background(open3d::cuda::ImageCuda<float, 3> &vertex,
   open3d::cuda::PinholeCameraIntrinsicCuda intrinsic,
   Eigen::Matrix4d camera_pose)
 {
-
     int i = 0;
     for (; i < mv_objects.size(); i++)
         if (mv_objects.at(i)->is_background()) break;

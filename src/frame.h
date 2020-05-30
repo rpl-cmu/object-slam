@@ -58,7 +58,7 @@ class Frame : public PipelinePayload
     //! Copy constructor
     Frame(const Frame &r_frame)
       : PipelinePayload(r_frame.m_timestamp), m_intrinsic(r_frame.m_intrinsic),
-        m_color(r_frame.m_color), m_depth(r_frame.m_depth), m_depthf(r_frame.m_depthf), m_is_maskframe(r_frame.m_is_maskframe),
+        m_color(r_frame.m_color), m_depth(r_frame.m_depth), m_is_maskframe(r_frame.m_is_maskframe),
         m_gt_mask(r_frame.m_gt_mask)
     {
         mp_rgbd =
@@ -68,7 +68,6 @@ class Frame : public PipelinePayload
     //! Required for image transport
     inline geometry::Image get_color(void) const { return m_color; }
     inline geometry::Image get_depth(void) const { return m_depth; }
-    inline geometry::Image get_depthf(void)const { return m_depthf; }
 
     inline camera::PinholeCameraIntrinsic get_intrinsics(void) const { return m_intrinsic; }
 
@@ -103,7 +102,6 @@ class Frame : public PipelinePayload
     //! Color and depth images
     geometry::Image m_color;
     geometry::Image m_depth;
-    geometry::Image m_depthf;
 
     //! We decide at read whether a frame needs instance segmentation
     const bool m_is_maskframe = { false };

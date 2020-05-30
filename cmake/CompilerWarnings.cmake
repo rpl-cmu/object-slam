@@ -54,7 +54,6 @@ function(set_project_warnings project_name)
       -Wdouble-promotion # warn if float is implicit promoted to double
       -Wformat=2 # warn on security issues around functions that format output
                  # (ie printf)
-      -Wno-unknown-warning-option # suppress unknown warning options
   )
 
   if (WARNINGS_AS_ERRORS)
@@ -64,13 +63,14 @@ function(set_project_warnings project_name)
 
   set(GCC_WARNINGS
       ${CLANG_WARNINGS}
-      -Wmisleading-indentation # warn if identation implies blocks where blocks
+      # TODO: clang-tidy does not recognize any GCC additional warnings
+      # -Wmisleading-indentation # warn if identation implies blocks where blocks
                                # do not exist
-      -Wduplicated-cond # warn if if / else chain has duplicated conditions
+      # -Wduplicated-cond # warn if if / else chain has duplicated conditions
       # -Wduplicated-branches # warn if if / else branches have duplicated code
-      -Wlogical-op # warn about logical operations being used where bitwise were
+      # -Wlogical-op # warn about logical operations being used where bitwise were
                    # probably wanted
-      -Wuseless-cast # warn if you perform a cast to the same type
+      # -Wuseless-cast # warn if you perform a cast to the same type
   )
 
   if(MSVC)

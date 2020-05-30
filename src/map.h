@@ -34,7 +34,7 @@ class GlobalMap
       open3d::geometry::Image &r_depth,
       open3d::cuda::PinholeCameraIntrinsicCuda &r_intrinsic,
       open3d::camera::PinholeCameraIntrinsic intrinsics,
-      Eigen::Matrix4d &r_camera_pose);
+      const Eigen::Matrix4d &r_camera_pose);
 
     void add_object(open3d::geometry::Image &r_color,
       open3d::geometry::Image &r_depth,

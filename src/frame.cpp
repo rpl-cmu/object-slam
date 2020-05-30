@@ -28,7 +28,6 @@ Frame::Frame(std::size_t frame_id,
 {
     mp_rgbd =
       open3d::geometry::RGBDImage::CreateFromColorAndDepth(m_color, m_depth, 1000, 3.0, false);
-    m_depthf = mp_rgbd->depth_;
 }
 
 //!TODO(Akash): Reconsider when required

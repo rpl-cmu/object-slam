@@ -10,7 +10,7 @@ Object SLAM is an implementation of semantic RGB-D SLAM that employs recognized 
 - [x] Create Pipeline abstract class (similar to Kimera (don't forget license)) to streamline async tasks
 - [x] Run Segmentation as a separate task properly (at lower rate)
 - [x] Implement Frame to SDF Tracking
-- [ ] Implement pyramid scheme of tracking to make tracking realtime
+- [x] Implement coarse to fine / gaussian pyramid tracking (done for single object)
 - [ ] Move raycasting into mapping thread
 - [ ] Design Mapping thread
 - [ ] Obtain APIs from Wei for tracker thread
