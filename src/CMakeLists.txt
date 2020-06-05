@@ -20,6 +20,13 @@ add_executable(
 
 add_subdirectory(utils)
 
+# Special handling to suppress warnings from Eigen headers
+target_include_directories(
+  reconstruct SYSTEM PRIVATE
+  ${EIGEN3_INCLUDE_DIR}
+  ${CMAKE_BINARY_DIR}
+)
+
 target_link_libraries(
   reconstruct PRIVATE project_options project_warnings
   CONAN_PKG::docopt.cpp
@@ -28,7 +35,6 @@ target_link_libraries(
   CONAN_PKG::cppzmq
   CONAN_PKG::protobuf
   Boost::filesystem
-  Eigen3::Eigen
   Open3D::Open3D
   Open3D::Open3DCuda
   opencv_core
@@ -38,8 +44,7 @@ target_link_libraries(
   proto
 )
 
-target_include_directories(reconstruct PRIVATE ${CMAKE_BINARY_DIR})
-
+#
 if(WITH_OPENMP)
   find_package(OpenMP)
   if(OpenMP_CXX_FOUND)

@@ -8,35 +8,26 @@
 #ifndef OSLAM_FRAME_H
 #define OSLAM_FRAME_H
 
-#include <Eigen/Eigen>
 #include <Open3D/Open3D.h>
+
+#include <Eigen/Eigen>
+#include <utility>
 #include <vector>
 
+#include "masked_image.h"
 #include "utils/macros.h"
 #include "utils/pipeline_payload.h"
-#include "masked_image.h"
 
-namespace oslam {
-
-    using namespace open3d;
-
-struct Odometry
+namespace oslam
 {
-    Eigen::Matrix4d transform;
-    Eigen::Matrix6d information;
+  using namespace open3d;
 
-    Odometry(const Eigen::Matrix4d &r_transform = Eigen::Matrix4d::Identity(),
-      const Eigen::Matrix6d &r_information = Eigen::Matrix6d::Identity())
-      : transform(r_transform), information(r_information)
-    {}
-};
-
-/*! \class Frame
- *  \brief Encapsulation data structure for a single RGBD frame
- */
-class Frame : public PipelinePayload
-{
-  public:
+  /*! \class Frame
+   *  \brief Encapsulation data structure for a single RGBD frame
+   */
+  class Frame : public PipelinePayload
+  {
+   public:
     OSLAM_POINTER_TYPEDEFS(Frame);
 
     //! Constructor
@@ -44,41 +35,38 @@ class Frame : public PipelinePayload
     //! Required to clone if frame needs to own the images
     //! TODO(Akash): Is it safe to maintain a reference to non-owned Image objects?
     //! TODO(Akash): Open3D does not provide clone API for images..
-    explicit Frame(std::uint64_t frame_id,
-      camera::PinholeCameraIntrinsic intrinsic,
-      const geometry::Image &r_color,
-      const geometry::Image &r_depth,
-      bool is_maskframe = false,
-      const geometry::Image &r_gt_mask = geometry::Image(),
-      const std::vector<unsigned int> &r_gt_labels = {},
-      const std::vector<double> &r_gt_scores = {});
+    explicit Frame(std::uint64_t frame_id, const camera::PinholeCameraIntrinsic &r_intrinsic, const geometry::Image &r_color,
+                   const geometry::Image &r_depth, bool is_maskframe = false,
+                   const geometry::Image &r_gt_mask = geometry::Image(), const std::vector<unsigned int> &r_gt_labels = {},
+                   const std::vector<double> &r_gt_scores = {});
 
-    virtual ~Frame() = default;
+    ~Frame() override = default;
 
     //! Copy constructor
     Frame(const Frame &r_frame)
-      : PipelinePayload(r_frame.m_timestamp), m_intrinsic(r_frame.m_intrinsic),
-        m_color(r_frame.m_color), m_depth(r_frame.m_depth), m_is_maskframe(r_frame.m_is_maskframe),
-        m_gt_mask(r_frame.m_gt_mask)
+        : PipelinePayload(r_frame.m_timestamp),
+          m_intrinsic(r_frame.m_intrinsic),
+          m_color(r_frame.m_color),
+          m_depth(r_frame.m_depth),
+          m_is_maskframe(r_frame.m_is_maskframe),
+          m_gt_mask(r_frame.m_gt_mask)
     {
-        mp_rgbd =
-          geometry::RGBDImage::CreateFromColorAndDepth(m_color, m_depth, 1000, 3.0, false);
+      mp_rgbd = geometry::RGBDImage::CreateFromColorAndDepth(m_color, m_depth, 1000, 3.0, false);
     };
 
     //! Required for image transport
-    inline geometry::Image get_color(void) const { return m_color; }
-    inline geometry::Image get_depth(void) const { return m_depth; }
+    [[nodiscard]] inline geometry::Image get_color() const { return m_color; }
+    [[nodiscard]] inline geometry::Image get_depth() const { return m_depth; }
 
-    inline camera::PinholeCameraIntrinsic get_intrinsics(void) const { return m_intrinsic; }
+    [[nodiscard]] inline camera::PinholeCameraIntrinsic get_intrinsics() const { return m_intrinsic; }
 
     //! Required for Odometry functions
-    inline std::shared_ptr<geometry::RGBDImage> get_rgbd(void) const { return mp_rgbd; }
+    [[nodiscard]] inline std::shared_ptr<geometry::RGBDImage> get_rgbd() const { return mp_rgbd; }
 
-    inline Eigen::Matrix4d get_pose(void) const { return m_pose; }
+    [[nodiscard]] inline Eigen::Matrix4d get_pose() const { return m_pose; }
     inline void set_pose(Eigen::Matrix4d pose) { m_pose = std::move(pose); }
 
-    inline bool is_maskframe() const { return m_is_maskframe; }
-
+    [[nodiscard]] inline bool is_maskframe() const { return m_is_maskframe; }
 
     //! TODO(Akash): Reconsider when required
     /* std::shared_ptr<Odometry> odometry(std::shared_ptr<Frame> p_target_frame, */
@@ -95,7 +83,7 @@ class Frame : public PipelinePayload
     /*     mp_masked_image = std::move(p_masked_image); */
     /* } */
 
-  private:
+   private:
     //! Camera intrinsics
     camera::PinholeCameraIntrinsic m_intrinsic;
 
@@ -114,6 +102,6 @@ class Frame : public PipelinePayload
 
     //! RGBD object of the frame constructed from color and depth images
     std::shared_ptr<geometry::RGBDImage> mp_rgbd;
-};
-}// namespace oslam
+  };
+}  // namespace oslam
 #endif /* ifndef OSLAM_FRAME_H */

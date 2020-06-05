@@ -8,37 +8,37 @@
 #ifndef OSLAM_DATA_READER_H
 #define OSLAM_DATA_READER_H
 
-#include <string>
-#include <vector>
+#include <Open3D/Open3D.h>
 
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/operations.hpp>
+#include <string>
+#include <vector>
 
-#include <Open3D/Open3D.h>
-
-#include "utils/thread_safe_queue.h"
 #include "frame.h"
+#include "utils/thread_safe_queue.h"
 
-namespace oslam {
-
-namespace fs = boost::filesystem;
-
-/*! \class DataReader
- *  \brief Reads from a given dataset folder given the following structure
- *  .
- *  ├── camera-intrinsics.json
- *  ├── color [723 entries]
- *  ├── depth [723 entries]
- *  └── preprocessed [1446 entries]
- *
- */
-class DataReader
+namespace oslam
 {
-  public:
+  namespace fs = boost::filesystem;
+
+  /*! \class DataReader
+   *  \brief Reads from a given dataset folder given the following structure
+   *  .
+   *  ├── camera-intrinsics.json
+   *  ├── color [723 entries]
+   *  ├── depth [723 entries]
+   *  └── preprocessed [1446 entries]
+   *
+   */
+  class DataReader
+  {
+   public:
     OSLAM_POINTER_TYPEDEFS(DataReader);
     OSLAM_DELETE_COPY_CONSTRUCTORS(DataReader);
 
-    typedef std::function<void(Frame::UniquePtr)> FrameCallback;
+    using FrameCallback = std::function<void(Frame::UniquePtr)>;
+    using ShutdownCallback = std::function<void(Timestamp)>;
 
     explicit DataReader(const std::string &r_root_dir);
     virtual ~DataReader() = default;
@@ -50,16 +50,14 @@ class DataReader
     bool run();
 
     //! \brief Shutdown the data_reader on demand
-    void shutdown(void);
+    void shutdown();
 
-    inline void register_provider_callback(const FrameCallback &r_callback)
-    {
-        m_provider_callback = r_callback;
-    }
+    inline void register_provider_callback(const FrameCallback &r_callback) { m_provider_callback = r_callback; }
+    inline void register_shutdown_callback(const ShutdownCallback &r_callback) { m_shutdown_callbacks.emplace_back(r_callback); }
 
-  protected:
-    bool parse_dataset(void);
-    bool read_frame(void);
+   private:
+    bool parse_dataset();
+    bool read_frame();
 
     //! Root directory of the dataset folder
     fs::path m_root_dir;
@@ -67,7 +65,7 @@ class DataReader
     //! Number of images color/depth in the dataset folder
     std::size_t m_size = { 0 };
     //! Current index of files being read
-    std::size_t m_current_index = 0;
+    Timestamp m_current_index = 0;
 
     //! is dataset parsed
     bool m_dataset_parsed = { false };
@@ -85,9 +83,12 @@ class DataReader
     //! Vector of callbacks called when data available
     FrameCallback m_provider_callback;
 
+    //! Vector of callbacks to forward max frames in dataset when shutdown
+    std::vector<ShutdownCallback> m_shutdown_callbacks;
+
     //! Shutdown switch
     std::atomic_bool m_shutdown = { false };
-};
+  };
 
 } /* namespace oslam */
 #endif /* OSLAM_DATA_READER_H */

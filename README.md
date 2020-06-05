@@ -11,6 +11,7 @@ Object SLAM is an implementation of semantic RGB-D SLAM that employs recognized 
 - [x] Run Segmentation as a separate task properly (at lower rate)
 - [x] Implement Frame to SDF Tracking
 - [x] Implement coarse to fine / gaussian pyramid tracking (done for single object)
+- [x] Shutdown system on completion of the dataset
 - [ ] Move raycasting into mapping thread
 - [ ] Design Mapping thread
 - [ ] Obtain APIs from Wei for tracker thread

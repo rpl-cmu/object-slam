@@ -60,7 +60,6 @@ class PipelineModuleBase
 
     virtual inline void shutdown()
     {
-        spdlog::warn("Module {} - Shutdown requested, but was already shutdown.", name_id_);
         spdlog::warn("Stopping module {} and its queues...", name_id_);
         shutdown_queues();
         shutdown_ = true;
@@ -209,7 +208,7 @@ template<typename Input, typename Output> class PipelineModule : public Pipeline
             }
         }
         is_thread_working_ = false;
-        spdlog::trace("{} - Successful shutdown", name_id_);
+        spdlog::debug("{} - Successful shutdown", name_id_);
         return false;
     }
 

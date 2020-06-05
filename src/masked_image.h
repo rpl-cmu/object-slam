@@ -22,16 +22,16 @@ namespace oslam {
  */
 struct MaskedImage : public PipelinePayload
 {
-    typedef std::vector<std::shared_ptr<open3d::geometry::RGBDImage>> ObjectRGBDVector;
+    using ObjectRGBDVector = std::vector<std::shared_ptr<open3d::geometry::RGBDImage> >;
 
   public:
     OSLAM_POINTER_TYPEDEFS(MaskedImage);
 
-    explicit MaskedImage(const Timestamp timestamp,
+    explicit MaskedImage(Timestamp timestamp,
       const open3d::geometry::Image &r_image,
-      const std::vector<unsigned int> &r_labels,
-      const std::vector<double> &r_scores);
-    ~MaskedImage() = default;
+      std::vector<unsigned int> labels,
+      std::vector<double> scores);
+    ~MaskedImage() override = default;
 
     MaskedImage(const MaskedImage &r_masked_image)
       : PipelinePayload(r_masked_image.m_timestamp), m_image(r_masked_image.m_image),
@@ -39,9 +39,8 @@ struct MaskedImage : public PipelinePayload
     {}
 
     //! Generate separate object masks from the masked image
-    std::vector<cv::Mat> process(void);
+    std::vector<cv::Mat> process();
 
-  public:
     open3d::geometry::Image m_image;
     std::vector<unsigned int> m_labels;
     std::vector<double> m_scores;

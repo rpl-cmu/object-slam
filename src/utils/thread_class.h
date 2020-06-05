@@ -22,7 +22,7 @@ namespace oslam {
 class Thread
 {
   public:
-    Thread(std::string threadname) :m_threadname(threadname) {}
+    Thread(const std::string &r_threadname) :m_threadname(r_threadname) {}
 
     // Non-copyable
     Thread(const Thread&) = delete;

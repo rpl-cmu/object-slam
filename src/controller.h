@@ -8,37 +8,43 @@
 #ifndef OSLAM_CONTROLLER_H
 #define OSLAM_CONTROLLER_H
 
-#include <docopt/docopt.h>
-#include <memory>
-#include <spdlog/spdlog.h>
 #include <Open3D/Open3D.h>
+#include <docopt/docopt.h>
+#include <spdlog/spdlog.h>
+
+#include <memory>
 #include <zmq.hpp>
 
+#include "data_provider.h"
+#include "data_reader.h"
+#include "image_transport.h"
+#include "map.h"
+#include "tracker.h"
 #include "utils/macros.h"
 #include "utils/thread_class.h"
-#include "data_reader.h"
-#include "data_provider.h"
-#include "image_transport.h"
-#include "tracker.h"
-#include "map.h"
 /* #include "visualizer.h" */
 
-namespace oslam {
-
-class Controller
+namespace oslam
 {
-  public:
-    Controller(const std::map<std::string, docopt::value>& r_arguments);
+  class Controller
+  {
+   public:
+    OSLAM_DELETE_COPY_CONSTRUCTORS(Controller);
+    explicit Controller(const std::map<std::string, docopt::value> &r_args);
     virtual ~Controller() = default;
 
-    int start(void);
+    int start();
 
-  private:
-    bool setup(void);
-    void run(void);
-    /* data */
+   private:
+    bool setup();
+    void run();
+    bool shutdown_when_complete();
+    void shutdown();
+
     bool m_visualize;
     bool m_debug;
+
+    std::atomic_bool m_shutdown = { false };
     std::string m_dataset_path;
 
     std::shared_ptr<GlobalMap> mp_global_map;
@@ -51,8 +57,6 @@ class Controller
     DataProvider::InputQueue m_data_provider_input_queue;
     ImageTransporter::InputQueue m_transport_frame_queue;
     ImageTransporter::OutputQueue m_masked_image_queue;
-
-
-};
-}// namespace oslam
+  };
+}  // namespace oslam
 #endif /* ifndef OSLAM_CONTROLLER_H */

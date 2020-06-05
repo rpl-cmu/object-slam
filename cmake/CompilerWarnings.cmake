@@ -63,14 +63,12 @@ function(set_project_warnings project_name)
 
   set(GCC_WARNINGS
       ${CLANG_WARNINGS}
-      # TODO: clang-tidy does not recognize any GCC additional warnings
-      # -Wmisleading-indentation # warn if identation implies blocks where blocks
-                               # do not exist
-      # -Wduplicated-cond # warn if if / else chain has duplicated conditions
+      -Wmisleading-indentation # warn if identation implies blocks where blocks do not exist
+      -Wduplicated-cond # warn if if / else chain has duplicated conditions
+      # TODO(Akash): Figure out how to suppress this for Eigen
       # -Wduplicated-branches # warn if if / else branches have duplicated code
-      # -Wlogical-op # warn about logical operations being used where bitwise were
-                   # probably wanted
-      # -Wuseless-cast # warn if you perform a cast to the same type
+      -Wlogical-op # warn about logical operations being used where bitwise were probably wanted
+      -Wuseless-cast # warn if you perform a cast to the same type
   )
 
   if(MSVC)
