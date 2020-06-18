@@ -34,7 +34,7 @@ namespace oslam
 
     //! Constructor accepts masked depth image to size the object volume during
     //! allocation/initialization
-    explicit TSDFObject(const Frame &r_frame, unsigned int label, double score,
+    explicit TSDFObject(const Frame &r_frame, const cv::Mat &r_mask, unsigned int label, double score,
                         const Eigen::Matrix4d &r_camera_pose = Eigen::Matrix4d::Identity(), int resolution = 64);
 
     virtual ~TSDFObject() = default;
@@ -46,9 +46,13 @@ namespace oslam
     void raycast(open3d::cuda::ImageCuda<float, 3> &vertex, open3d::cuda::ImageCuda<float, 3> &normal,
                  open3d::cuda::ImageCuda<uchar, 3> &color, const Eigen::Matrix4d &r_camera_pose);
 
+    static open3d::geometry::Image get_masked_depth(const Frame &r_frame, const cv::Mat &r_mask);
+
+    [[nodiscard]] Eigen::Matrix4d get_pose() const { return m_pose; }
+    [[nodiscard]] cuda::PinholeCameraIntrinsicCuda get_cuda_intrinsic() const { return mc_intrinsic; }
+
    private:
     constexpr static int M_SUBVOLUME_RES = 16;
-
     //! Resolution for the object volume
     int m_resolution;
 

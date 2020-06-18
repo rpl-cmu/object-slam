@@ -10,6 +10,7 @@
 #include <Open3D/Open3D.h>
 #include <spdlog/spdlog.h>
 
+#include <opencv2/imgproc.hpp>
 #include <opencv2/opencv.hpp>
 
 #include "data_reader.h"
@@ -28,35 +29,10 @@ namespace oslam
         m_is_maskframe(is_maskframe),
         m_gt_mask(frame_id, r_gt_mask, r_gt_labels, r_gt_scores)
   {
-    mp_rgbd = open3d::geometry::RGBDImage::CreateFromColorAndDepth(m_color, m_depth, 1000, 3.0, false);
-  }
+    mp_rgbd     = open3d::geometry::RGBDImage::CreateFromColorAndDepth(m_color, m_depth, 1000, 3.0, false);
 
-  //! TODO(Akash): Reconsider when required
-  /* std::shared_ptr<oslam::Odometry> Frame::odometry( */
-  /*   [[maybe_unused]] std::shared_ptr<Frame> p_target_frame, */
-  /*   const Eigen::Matrix4d &r_init_transformation /1* = Identity() *1/) */
-  /* { */
-  /*     using namespace open3d::odometry; */
-  /*     std::shared_ptr<Odometry> p_rgbd_odometry(new Odometry()); */
-  /*     if (p_target_frame) { */
-  /*         bool success = false; */
-  /*         spdlog::debug("Source Image size: ({}, {})", */
-  /*           mp_rgbd->color_.num_of_channels_, */
-  /*           mp_rgbd->color_.bytes_per_channel_); */
-  /*         spdlog::debug("Target image channels: ({}, {})", */
-  /*           p_target_frame->get_rgbd()->color_.num_of_channels_, */
-  /*           p_target_frame->get_rgbd()->color_.bytes_per_channel_); */
-  /*         std::tie(success, p_rgbd_odometry->transform, p_rgbd_odometry->information) = */
-  /*           ComputeRGBDOdometry( */
-  /*             *mp_rgbd, *p_target_frame->get_rgbd(), m_intrinsic, r_init_transformation); */
-  /*         if (success) return p_rgbd_odometry; */
-  /*     } */
-  /*     return p_rgbd_odometry; */
-  /* } */
-  /* void Frame::visualize() */
-  /* { */
-  /*     //! TODO: Reconsider visualization for frame later */
-  /*     if (!mp_pcd) mp_pcd = open3d::geometry::PointCloud::CreateFromRGBDImage(*mp_rgbd, m_intrinsic); */
-  /*     open3d::visualization::DrawGeometries({ mp_pcd }, fmt::format("Frame {}", m_frame_id)); */
-  /* } */
+    cv::Mat color = cv::Mat(m_color.height_, m_color.width_, CV_8UC3, m_color.data_.data());
+    cv::cvtColor(color, m_color_mat, cv::COLOR_RGB2BGR);
+    m_depth_mat = cv::Mat(m_depth.height_, m_depth.width_, CV_32FC1, m_depth.data_.data());
+  }
 }  // namespace oslam

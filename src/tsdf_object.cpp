@@ -22,8 +22,8 @@
 
 namespace oslam
 {
-  TSDFObject::TSDFObject(const Frame &r_frame, unsigned int label, double score, const Eigen::Matrix4d &r_camera_pose,
-                         int resolution)
+  TSDFObject::TSDFObject(const Frame &r_frame, const cv::Mat &r_mask, unsigned int label, double score,
+                         const Eigen::Matrix4d &r_camera_pose, int resolution)
       : m_resolution(resolution),
         m_label(label),
         m_score(score),
@@ -31,17 +31,19 @@ namespace oslam
         m_intrinsic(r_frame.get_intrinsics()),
         mc_intrinsic(m_intrinsic)
   {
-    auto depth = r_frame.get_depth();
-    auto color = r_frame.get_color();
+    auto color            = r_frame.get_color();
+    auto o3d_object_depth = get_masked_depth(r_frame, r_mask);
 
     open3d::cuda::RGBDImageCuda object_rgbd;
-    object_rgbd.Upload(depth, color);
-
+    object_rgbd.Upload(o3d_object_depth, color);
     open3d::cuda::PointCloudCuda object_point_cloud(open3d::cuda::VertexWithColor, color.width_ * color.height_);
     object_point_cloud.Build(object_rgbd, mc_intrinsic);
 
-    /* //! Translate the object pose to the object point cloud center */
-    /* m_pose.block(0, 3, 3, 3) = object_center; */
+    //! Translate the object pose to point cloud center
+    //! T_wo = T_wc * T_co
+    m_pose.block<3, 1>(0, 3) = object_point_cloud.GetCenter();
+    spdlog::info("Object pose: {}", m_pose);
+    m_pose                   = r_camera_pose * m_pose;
 
     //! Appropriately size the voxel_length of volume for appropriate resolution of the object
     Eigen::Vector3d object_max = object_point_cloud.GetMaxBound();
@@ -52,18 +54,15 @@ namespace oslam
     spdlog::debug("Voxel length {}", voxel_length);
 
     open3d::cuda::TransformCuda c_object_pose;
-    c_object_pose.FromEigen(m_pose);
-    mpc_object_volume.emplace(M_SUBVOLUME_RES, voxel_length, 4 * voxel_length, c_object_pose);
+    c_object_pose.FromEigen(r_camera_pose);
+    //! Subvolume resolution is always 16, truncation distance = 4 * voxel length
+    //! Allocate lower memory since we will create multiple TSDF objects
+    mpc_object_volume.emplace(M_SUBVOLUME_RES, voxel_length, 4 * voxel_length, c_object_pose, 500, 8000);
   }
 
-  void TSDFObject::integrate(const Frame &r_frame, const cv::Mat &r_mask, const Eigen::Matrix4d &r_camera_pose)
+  open3d::geometry::Image TSDFObject::get_masked_depth(const Frame &r_frame, const cv::Mat &r_mask)
   {
-    std::scoped_lock<std::mutex> integration_lock(m_object_mutex);
-
     auto depth = r_frame.get_depth();
-    auto color = r_frame.get_color();
-    //! TODO Do we integrate over the entire volume or just the mask?
-    //! Mask out the depth image using the mask binary matrix
     cv::Mat object_dep(depth.height_, depth.width_, CV_16UC1, depth.data_.data());
     cv::Mat object_depth = object_dep.clone();
     object_depth.setTo(0, ~r_mask);
@@ -71,26 +70,35 @@ namespace oslam
     open3d::geometry::Image o3d_object_depth;
     o3d_object_depth.Prepare(depth.width_, depth.height_, depth.num_of_channels_, depth.bytes_per_channel_);
     o3d_object_depth.data_.assign(object_depth.datastart, object_depth.dataend);
+    return o3d_object_depth;
+  }
+
+  void TSDFObject::integrate(const Frame &r_frame, const cv::Mat &r_mask, const Eigen::Matrix4d &r_camera_pose)
+  {
+    std::scoped_lock<std::mutex> integration_lock(m_object_mutex);
+
+    auto color = r_frame.get_color();
+    //! TODO Do we integrate over the entire volume or just the mask?
+    //! Mask out the depth image using the mask binary matrix
+    auto o3d_object_depth = get_masked_depth(r_frame, r_mask);
 
     open3d::cuda::RGBDImageCuda c_object_rgbd(color.width_, color.height_, 3.0f, 1000.0f);
     c_object_rgbd.Upload(o3d_object_depth, color);
 
-    open3d::cuda::TransformCuda c_object_2_world;
-    c_object_2_world.FromEigen(r_camera_pose);
+    open3d::cuda::TransformCuda c_camera_2_world;
+    c_camera_2_world.FromEigen(r_camera_pose);
 
-    mpc_object_volume->Integrate(c_object_rgbd, mc_intrinsic, c_object_2_world);
+    mpc_object_volume->Integrate(c_object_rgbd, mc_intrinsic, c_camera_2_world);
 
-    /* mpc_object_volume->GetAllSubvolumes(); */
-
-    /* open3d::cuda::ScalableMeshVolumeCuda mesher( */
-    /*         open3d::cuda::VertexWithNormalAndColor, 16, */
-    /*         mpc_object_volume->active_subvolume_entry_array_.size(), 2000000, 4000000); */
-
-    /* mesher.MarchingCubes(*mpc_object_volume); */
-
-    /* auto mesh = mesher.mesh().Download(); */
-
-    /* open3d::visualization::DrawGeometries({ mesh }, "Mesh after integration"); */
+    /* if(r_frame.m_timestamp % 50 == 0) */
+    /* { */
+    /*     mpc_object_volume->GetAllSubvolumes(); */
+    /*     open3d::cuda::ScalableMeshVolumeCuda mesher(open3d::cuda::VertexWithNormalAndColor, 16, */
+    /*                                                 mpc_object_volume->active_subvolume_entry_array_.size(), 2000000, 4000000); */
+    /*     mesher.MarchingCubes(*mpc_object_volume); */
+    /*     auto mesh = mesher.mesh().Download(); */
+    /*     open3d::visualization::DrawGeometries({ mesh }, "Mesh after integration"); */
+    /* } */
   }
 
   void TSDFObject::raycast(open3d::cuda::ImageCuda<float, 3> &vertex, open3d::cuda::ImageCuda<float, 3> &normal,

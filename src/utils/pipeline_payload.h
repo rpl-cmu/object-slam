@@ -8,11 +8,10 @@
 #define OSLAM_PIPELINE_PAYLOAD
 
 #include "macros.h"
+#include "types.h"
 #include <Eigen/Eigen>
 
-
 namespace oslam {
-typedef std::uint64_t Timestamp;
 
 struct PipelinePayload
 {

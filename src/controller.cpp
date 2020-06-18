@@ -51,8 +51,6 @@ namespace oslam
     mp_data_provider->shutdown();
     mp_image_transport->shutdown();
     mp_tracker->shutdown();
-
-    auto& global_map = GlobalMap::get_instance();
   }
 
   bool Controller::setup()

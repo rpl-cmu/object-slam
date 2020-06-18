@@ -6,9 +6,13 @@ AllowShortCaseLabelsOnASingleLine: true
 AllowShortBlocksOnASingleLine: true
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: true
+AllowShortBlocksOnASingleLine: true
+AlignTrailingComments: true
 BreakBeforeBraces: Allman
 Cpp11BracedListStyle: false
 ColumnLimit: 125
+IndentWidth: 4
 NamespaceIndentation: All
 SpaceAfterTemplateKeyword: false
 SpaceBeforeCtorInitializerColon: true

@@ -31,13 +31,14 @@ namespace oslam
    *
    *  Detailed description
    */
-  class Tracker : public MISOPipelineModule<TrackerPayload, NullPipelinePayload>
+  class Tracker : public MISOPipelineModule<TrackerInputPayload, NullPipelinePayload>
   {
    public:
     OSLAM_POINTER_TYPEDEFS(Tracker);
     OSLAM_DELETE_COPY_CONSTRUCTORS(Tracker);
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    using MISO             = MISOPipelineModule<TrackerPayload, NullPipelinePayload>;
+    using MISO             = MISOPipelineModule<TrackerInputPayload, NullPipelinePayload>;
     using MaskedImageQueue = ThreadsafeQueue<MaskedImage::UniquePtr>;
 
     explicit Tracker(MaskedImageQueue* p_masked_image_queue, OutputQueue* p_output_queue);
@@ -67,6 +68,7 @@ namespace oslam
 
     //! Current timestamp being processed
     Timestamp m_curr_timestamp = 0;
+    Timestamp m_prev_maskframe_timestamp;
     Timestamp m_max_timestamp  = std::numeric_limits<Timestamp>::max();
 
     //! Vector of trajectory poses w.r.t world coordinate

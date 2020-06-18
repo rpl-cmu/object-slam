@@ -16,10 +16,10 @@
 
 #include <cstdlib>
 #include <memory>
+#include <opencv2/core.hpp>
+#include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/opencv.hpp>
-
-#include "cuda/segmentation.cuh"
 
 namespace oslam
 {
@@ -56,7 +56,8 @@ namespace oslam
     {
       spdlog::debug("Use old mask and geometric segment");
       //! Simply use the previous masked image to create tracker payload
-      p_tracker_payload = std::make_unique<TrackerPayload>(m_curr_timestamp, *p_input_frame, *mp_prev_masked_image);
+      p_tracker_payload = std::make_unique<TrackerInputPayload>(m_curr_timestamp, m_prev_maskframe_timestamp, *p_input_frame,
+                                                                *mp_prev_masked_image);
     }
     else
     {
@@ -74,12 +75,14 @@ namespace oslam
         spdlog::error("Module: {} {} returned null", name_id_, mp_masked_image_queue->queue_id_);
         return nullptr;
       }
-      p_tracker_payload    = std::make_unique<TrackerPayload>(m_curr_timestamp, *p_input_frame, *p_masked_image);
-      mp_prev_masked_image = std::move(p_masked_image);
+      p_tracker_payload =
+          std::make_unique<TrackerInputPayload>(m_curr_timestamp, m_curr_timestamp, *p_input_frame, *p_masked_image);
+      mp_prev_masked_image       = std::move(p_masked_image);
+      m_prev_maskframe_timestamp = m_curr_timestamp;
     }
     if (!p_tracker_payload)
     {
-      spdlog::error("Unable to create TrackerPayload");
+      spdlog::error("Unable to create TrackerInputPayload");
       return nullptr;
     }
     auto duration = Timer::toc(start_time).count();
@@ -99,32 +102,42 @@ namespace oslam
       mc_intrinsic.SetIntrinsics(intrinsic);
     }
 
-    auto curr_frame       = p_input->get_frame();
-    auto curr_depth_image = p_input->get_frame().get_depth();
-    auto curr_color_image = p_input->get_frame().get_color();
+    auto curr_frame               = p_input->get_frame();
+    auto curr_masked_image        = p_input->get_masked_image();
+    auto prev_maskframe_timestamp = p_input->get_prev_maskframe_timestamp();
+    spdlog::info("Previous maskframe timestamp: {}", prev_maskframe_timestamp);
 
-    auto curr_masked_image = p_input->get_masked_image();
-    auto mat_masks         = curr_masked_image.process();
+    auto curr_depth_image = curr_frame.get_depth();
+    auto curr_color_image = curr_frame.get_color();
+    auto mat_masks        = curr_masked_image.process();
 
     mc_curr_depth_raw.Upload(curr_depth_image);
     mc_curr_color.Upload(curr_color_image);
+
+    cuda::RGBDImageCuda source_rgbd;
+    source_rgbd.Build(mc_curr_depth_raw, mc_curr_color);
+    auto curr_vertex_map = source_rgbd.depth_.GetVertexMap(mc_intrinsic);
+    auto curr_normal_map = curr_vertex_map.GetNormalMap();
 
     //! First ever frame
     if (m_curr_timestamp == 1)
     {
       auto current_odometry = Eigen::Matrix4d::Identity();
-      //! Add background object to map and integrate with current camera pose
-      mr_global_map.add_background(curr_frame, current_odometry);
-      spdlog::info("Add background complete");
-      /* for(unsigned int i = 0; auto& mask : mat_masks) */
-      /* { */
-      /*     auto label = curr_masked_image.m_labels[i]; */
-      /*     auto score = curr_masked_image.m_scores[i]; */
-      /*     mr_global_map.add_object(mc_curr_color, mc_curr_depth_raw, mask, label, score,
-       * mc_intrinsic, mv_T_camera_2_world.back()); */
-      /*     i++; */
-      /* } */
 
+      //! Add Objects to the map and integrate with current_odometry
+      {
+        mr_global_map.add_background(curr_frame, current_odometry);
+        unsigned int i = 0;
+        for (auto &mask : mat_masks)
+        {
+          auto label = curr_masked_image.m_labels[i];
+          auto score = curr_masked_image.m_scores[i];
+          spdlog::info("Current label, score: {}, {}", label, score);
+          mr_global_map.add_object(curr_frame, mask, label, score, current_odometry);
+          i++;
+        }
+        spdlog::info("Added all objects");
+      }
       //! TODO(Akash): Make a callback to backend with current pose for optimisation
       mv_T_camera_2_world.emplace_back(current_odometry);
 
@@ -140,12 +153,13 @@ namespace oslam
       odometry.SetIntrinsics(p_input->get_frame().get_intrinsics());
       odometry.SetParameters(odometry::OdometryOption({ 20, 10, 5 }, 0.07), 0.5f, cuda::OdometryType::FRAME_TO_MODEL);
 
-      cuda::RGBDImageCuda source_rgbd;
-      source_rgbd.Build(mc_curr_depth_raw, mc_curr_color);
-
       odometry.Initialize(source_rgbd, mc_g_prev_vertex_map, mc_g_prev_normal_map, mc_g_prev_color);
 
-      auto result         = odometry.ComputeMultiScale();
+      spdlog::info("Initialised odometry");
+      curr_vertex_map = odometry.source_vertex_[0];
+      curr_normal_map = odometry.source_normal_[0];
+      auto result     = odometry.ComputeMultiScale();
+      spdlog::info("Obtained result");
       auto transformation = std::get<1>(result);
 
       //! TODO(Akash): Send this to backend optimizer
@@ -155,14 +169,29 @@ namespace oslam
       spdlog::debug("Odometry took {} ms", odometry_time);
       auto current_odometry = mv_T_camera_2_world.back() * transformation;
       mv_T_camera_2_world.emplace_back(current_odometry);
+      auto integration_start = Timer::tic();
+
+      mr_global_map.integrate_background(curr_frame, mv_T_camera_2_world.back());
+
+      {
+        //! Project the masks to current frame
+        auto T_maskcamera_2_world             = mv_T_camera_2_world.at(prev_maskframe_timestamp - 1);
+        auto T_camera_2_world                 = mv_T_camera_2_world.back();
+        Eigen::Matrix4d T_maskcamera_2_camera = T_camera_2_world.inverse() * T_maskcamera_2_world;
+        unsigned int i                        = 0;
+        for (auto &mask : mat_masks)
+        {
+          auto label = curr_masked_image.m_labels[i];
+          auto score = curr_masked_image.m_scores[i];
+          mr_global_map.integrate_object(curr_frame, mask, label, score, mv_T_camera_2_world.back(), T_maskcamera_2_camera);
+          spdlog::info("Integrated object: {}", i);
+          i++;
+        }
+      }
+
+      auto integration_time = Timer::toc(integration_start).count();
+      spdlog::debug("Integration took {} ms", integration_time);
     }
-
-    auto integration_start = Timer::tic();
-
-    mr_global_map.integrate_background(curr_frame, mv_T_camera_2_world.back());
-
-    auto integration_time = Timer::toc(integration_start).count();
-    spdlog::debug("Integration took {} ms", integration_time);
 
     auto raycast_start = Timer::tic();
 
@@ -172,30 +201,19 @@ namespace oslam
     auto raycast_time = Timer::toc(raycast_start).count();
     spdlog::debug("Raycast took {} ms", raycast_time);
 
-    std::shared_ptr<geometry::Image> p_vertex_map = mc_g_prev_vertex_map.DownloadImage();
-    std::shared_ptr<geometry::Image> p_normal_map = mc_g_prev_normal_map.DownloadImage();
-    std::shared_ptr<geometry::Image> p_color_map  = mc_g_prev_color.DownloadImage();
-
-    cv::Mat vertex_map(p_vertex_map->height_, p_vertex_map->width_, CV_32FC3, p_vertex_map->data_.data());
-    cv::Mat normal_map(p_normal_map->height_, p_normal_map->width_, CV_32FC3, p_normal_map->data_.data());
-    cv::Mat color_image(p_color_map->height_, p_color_map->width_, CV_8UC3, p_color_map->data_.data());
-    cv::Mat curr_image(curr_frame.get_color().height_, curr_frame.get_color().width_, CV_8UC3,
-                       curr_frame.get_color().data_.data());
-    cv::Mat output_curr_image;
-    cv::cvtColor(curr_image, output_curr_image, cv::COLOR_RGB2BGR);
+    cv::Mat vertex_map = mc_g_prev_vertex_map.DownloadMat();
+    cv::Mat normal_map = mc_g_prev_normal_map.DownloadMat();
+    cv::Mat color_map  = mc_g_prev_color.DownloadMat();
+    cv::Mat curr_image = curr_frame.get_color_mat();
 
     cv::Mat output_color_image;
-    cv::cvtColor(color_image, output_color_image, cv::COLOR_RGB2BGR);
-    cv::imshow("Vertex map", vertex_map);
-    cv::imshow("Normal map", normal_map);
+    cv::cvtColor(color_map, output_color_image, cv::COLOR_RGB2BGR);
+
     cv::imshow("Color map", output_color_image);
-    cv::imshow("Curent source frame", output_curr_image);
+    cv::imshow("Source frame", curr_image);
     cv::waitKey(1);
 
     return nullptr;
-
-    /* cuda::ImageCuda<float, 1> c_edge_map = */
-    /*  cuda::SegmentationCuda::ComputeEdgeMap(mc_curr_vertex_map, mc_curr_normal_map); */
 
     /* //! TODO: Combine the masked image and geometric segmentation to obtain mask */
     /* //! Process masks to obtain list of object frames (frames, with masked depths) */
@@ -217,38 +235,7 @@ namespace oslam
 
     /* cv::Mat labels_image, binary_int; */
     /* binary_edge_map.convertTo(binary_int, CV_8U); */
-    /* cv::connectedComponents(binary_int, labels_image, 4); */
 
-    /* const unsigned char colors[31][3] = { */
-    /*     {0, 0, 0},     {0, 0, 255},     {255, 0, 0},   {0, 255, 0},     {255, 26, 184},  {255,211, 0},   {0, 131, 246},
-     * {0, 140, 70}, */
-    /*     {167, 96, 61}, {79, 0, 105},    {0, 255, 246}, {61, 123, 140},  {237, 167, 255}, {211, 255, 149}, {184, 79, 255},
-     * {228, 26, 87}, */
-    /*     {131, 131, 0}, {0, 255, 149},   {96, 0, 43},   {246, 131, 17},  {202, 255, 0},   {43, 61, 0},     {0, 52, 193},
-     * {255, 202, 131}, */
-    /*     {0, 43, 96},   {158, 114, 140}, {79, 184, 17}, {158, 193, 255}, {149, 158, 123}, {255, 123, 175}, {158, 8, 0}}; */
-    /* auto getColor = [&colors](unsigned index) -> cv::Vec3b { */
-    /*     return (index == 255) ? cv::Vec3b(255, 255, 255) : (cv::Vec3b)colors[index % 31]; */
-    /* }; */
-
-    /* auto mapLabelToColorImage = [&getColor](cv::Mat input, bool white0 = false) -> cv::Mat { */
-    /*     std::function<cv::Vec3b(unsigned)> getIndex; */
-    /*     auto getColorWW = [&](unsigned index) -> cv::Vec3b { return (white0 && index == 0) ? cv::Vec3b(255, 255, 255) :
-     * getColor(index); }; */
-    /*     if (input.type() == CV_32SC1) */
-    /*         getIndex = [&](unsigned i) -> cv::Vec3b { return getColorWW(input.at<int>(i)); }; */
-    /*     else if (input.type() == CV_8UC1) */
-    /*         getIndex = [&](unsigned i) -> cv::Vec3b { return getColorWW(input.data[i]); }; */
-    /*     else */
-    /*         assert(0); */
-    /*     cv::Mat result(input.rows, input.cols, CV_8UC3); */
-    /*     for (unsigned i = 0; i < result.total(); ++i) { */
-    /*         ((cv::Vec3b*)result.data)[i] = getIndex(i); */
-    /*     } */
-    /*     return result; */
-    /* }; */
-
-    /* cv::imshow("Connected components", mapLabelToColorImage(labels_image)); */
     /* cv::imshow("Bilateral", download_image); */
     /* cv::imshow("Vertex map", vertex_map); */
     /* cv::imshow("Normal map", normal_map); */

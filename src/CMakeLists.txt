@@ -40,6 +40,7 @@ target_link_libraries(
   opencv_core
   opencv_highgui
   opencv_imgproc
+  gtsam
   ${CMAKE_DL_LIBS}
   proto
 )
