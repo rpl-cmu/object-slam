@@ -11,7 +11,6 @@
 #include "frame.h"
 #include "masked_image.h"
 #include "utils/pipeline_payload.h"
-#include <gtsam/geometry/Pose3.h>
 
 namespace oslam
 {
@@ -20,12 +19,6 @@ namespace oslam
      *
      *  Detailed description
      */
-    enum TrackerStatus
-    {
-        VALID,
-        INVALID,
-        DISABLED
-    };
 
     class TrackerInputPayload : public PipelinePayload
     {
@@ -49,19 +42,27 @@ namespace oslam
         const Frame m_frame;
         const MaskedImage m_masked_image;
     };
+    //!TODO:(Akash) Figure out Eigen issue with using alignment in GTSAM vs no-alignment in Open3D!!!
 
-    class TrackerOutputPayload : public PipelinePayload
-    {
-       public:
-        TrackerOutputPayload(const Timestamp timestamp, const TrackerStatus& r_tracker_status,
-                             const gtsam::Pose3& r_T_camera_2_world)
-            : PipelinePayload(timestamp), m_tracker_status(r_tracker_status), m_T_camera_2_world(r_T_camera_2_world)
-        {
-        }
+    /* enum TrackerStatus */
+    /* { */
+    /*     VALID, */
+    /*     INVALID, */
+    /*     DISABLED */
+    /* }; */
 
-       private:
-        TrackerStatus m_tracker_status;
-        gtsam::Pose3  m_T_camera_2_world;
-    };
+    /* class TrackerOutputPayload : public PipelinePayload */
+    /* { */
+    /*    public: */
+    /*     TrackerOutputPayload(const Timestamp timestamp, const TrackerStatus& r_tracker_status, */
+    /*                          const gtsam::Pose3& r_T_camera_2_world) */
+    /*         : PipelinePayload(timestamp), m_tracker_status(r_tracker_status), m_T_camera_2_world(r_T_camera_2_world) */
+    /*     { */
+    /*     } */
+
+    /*    private: */
+    /*     TrackerStatus m_tracker_status; */
+    /*     gtsam::Pose3  m_T_camera_2_world; */
+    /* }; */
 }  // namespace oslam
 #endif /* ifndef OSLAM_TRACKER_PAYLOAD_H */

@@ -54,7 +54,6 @@ namespace oslam
     ImageTransporter::Ptr mp_image_transport;
     Tracker::Ptr mp_tracker;
 
-    DataProvider::InputQueue m_data_provider_input_queue;
     ImageTransporter::InputQueue m_transport_frame_queue;
     ImageTransporter::OutputQueue m_masked_image_queue;
   };

@@ -27,13 +27,12 @@ include(cmake/StaticAnalyzers.cmake)
 
 option(BUILD_SHARED_LIBS "Enable compilation of shared libraries" OFF)
 option(ENABLE_TESTING "Enable Test Builds" OFF)
-
 option(ENABLE_PCH "Enable Precompiled Headers" OFF)
 option(WITH_OPENMP "Use OpenMP" ON)
+
 if (ENABLE_PCH)
   target_precompile_headers(project_options INTERFACE <vector> <string> <map> <utility>)
 endif()
-
 
 # Set up some extra Conan dependencies based on our needs
 # before loading Conan

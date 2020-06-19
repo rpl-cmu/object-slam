@@ -44,7 +44,7 @@ MaskedImage::UniquePtr ImageTransporter::process(Frame::UniquePtr p_frame)
     zmq::message_t recv_msg;
     oslam::MaskImage mask_pbuf;
 
-    //Blocking call
+    //TODO(Akash): Blocking call!! Can we do this asynchronously?
     auto success = m_request_sock.recv(recv_msg);
     if (success) {
         mask_pbuf.ParseFromString(recv_msg.to_string());
