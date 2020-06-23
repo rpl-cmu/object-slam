@@ -2,13 +2,11 @@ find_package(GTSAM REQUIRED)
 find_package(Open3D REQUIRED COMPONENTS Open3DCuda)
 find_package(Boost REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui rgbd)
 
 add_executable(
   reconstruct
   main.cpp
-  frame.cpp
-  masked_image.cpp
   controller.cpp
   data_reader.cpp
   data_provider.cpp
@@ -40,6 +38,8 @@ target_link_libraries(
   opencv_core
   opencv_highgui
   opencv_imgproc
+  opencv_rgbd
+  gtsam
   ${CMAKE_DL_LIBS}
   proto
 )

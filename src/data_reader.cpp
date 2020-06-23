@@ -14,6 +14,7 @@
 #include <boost/filesystem/operations.hpp>
 #include <functional>
 #include <memory>
+#include <opencv2/imgcodecs.hpp>
 #include <vector>
 
 namespace oslam
@@ -112,12 +113,9 @@ namespace oslam
         spdlog::debug("Reading files: \n{} \n{} \n{}", m_rgb_files.at(m_current_index).string(),
                       m_depth_files.at(m_current_index).string(), m_mask_files.at(m_current_index).string());
 
-        open3d::geometry::Image color;
-        open3d::geometry::Image depth;
-        open3d::geometry::Image gt_mask;
-        ReadImage(m_rgb_files.at(m_current_index).string(), color);
-        ReadImage(m_depth_files.at(m_current_index).string(), depth);
-        ReadImage(m_mask_files.at(m_current_index).string(), gt_mask);
+        cv::Mat color   = cv::imread(m_rgb_files.at(m_current_index).string(), cv::IMREAD_COLOR);
+        cv::Mat depth   = cv::imread(m_depth_files.at(m_current_index).string(), cv::IMREAD_ANYDEPTH);
+        cv::Mat gt_mask = cv::imread(m_mask_files.at(m_current_index).string());
 
         // TODO:(Akash) Read ground truth pose from file conditionally based on input parameter
         /* p_data->gt_pose = Eigen::Matrix4d::Identity(); */
@@ -125,7 +123,7 @@ namespace oslam
         // Every 10th frame requires semantic segmentation
         for (const auto &callback : m_output_callbacks)
         {
-            callback(std::make_unique<Frame>(m_current_index + 1, m_intrinsic, color, depth, (m_current_index % 10) == 0));
+            callback(std::make_unique<Frame>(m_current_index + 1, color, depth, m_intrinsic, (m_current_index % 10) == 0));
         }
         return true;
     }

@@ -22,8 +22,8 @@ namespace oslam
         : m_visualize(r_args.at("--vis")),
           m_debug(r_args.at("--debug")),
           m_dataset_path(r_args.at("<dataset_path>").asString()),
-          m_transport_frame_queue("TransportFrameQueue"),
-          m_masked_image_queue("MaskedImageQueue")
+          m_transport_input_queue("TransportFrameQueue"),
+          m_transport_output_queue("MaskedImageQueue")
     {
         if (m_debug)
         {
@@ -54,17 +54,17 @@ namespace oslam
     bool Controller::setup()
     {
         mp_data_reader     = std::make_shared<oslam::DataReader>(m_dataset_path);
-        mp_image_transport = std::make_shared<oslam::ImageTransporter>(&m_transport_frame_queue, &m_masked_image_queue);
-        mp_tracker         = std::make_shared<oslam::Tracker>(&m_masked_image_queue, nullptr);
+        mp_image_transport = std::make_shared<oslam::ImageTransporter>(&m_transport_input_queue, &m_transport_output_queue);
+        mp_tracker         = std::make_shared<oslam::Tracker>(&m_transport_output_queue, nullptr);
 
         mp_data_reader->register_shutdown_callback(
             std::bind(&Tracker::set_max_timestamp, mp_tracker, std::placeholders::_1));
 
         //! DataReader fills the ImageTransporter Input Queue
-        auto &transport_frame_queue = m_transport_frame_queue;
-        mp_data_reader->register_output_callback([&transport_frame_queue](const Frame::Ptr &rp_frame) {
-            if (rp_frame->is_maskframe())
-                transport_frame_queue.push(std::make_unique<Frame>(*rp_frame));
+        auto &transport_frame_queue = m_transport_input_queue;
+        mp_data_reader->register_output_callback([&transport_frame_queue](Frame::Ptr p_frame) {
+            if (p_frame->m_is_maskframe)
+                transport_frame_queue.push(std::make_unique<Frame>(*p_frame));
         });
         //! DataReader also fills the Tracker Frame Queue
         mp_data_reader->register_output_callback(std::bind(&Tracker::fill_frame_queue, mp_tracker, std::placeholders::_1));
@@ -76,45 +76,45 @@ namespace oslam
     {
         // clang-format off
         while (!m_shutdown &&
-                ((mp_image_transport->is_working() || (!m_transport_frame_queue.isShutdown() && !m_transport_frame_queue.empty())) ||
-                 (mp_tracker->is_working()         || (!m_masked_image_queue.isShutdown()    && !m_masked_image_queue.empty()))
+                ((mp_image_transport->is_working() || (!m_transport_input_queue.isShutdown() && !m_transport_input_queue.empty())) ||
+                 (mp_tracker->is_working()         || (!m_transport_output_queue.isShutdown()    && !m_transport_output_queue.empty()))
                 )
               )
         {
             spdlog::debug("\n"
-                "m_shutdown                       : {}\n"
-                "mp_image_transport working       : {}\n"
-                "m_transport_frame_queue shutdown : {}\n"
-                "m_transport_frame_queue empty    : {}\n"
-                "mp_tracker working               : {}\n"
-                "m_masked_image_queue shutdown    : {}\n"
-                "m_masked_image_queue empty       : {}",
+                "m_shutdown                           : {}\n"
+                "mp_image_transport working           : {}\n"
+                "m_transport_input_queue shutdown     : {}\n"
+                "m_transport_input_queue empty        : {}\n"
+                "mp_tracker working                   : {}\n"
+                "m_transport_output_queue shutdown    : {}\n"
+                "m_transport_output_queue empty       : {}",
                 m_shutdown,
                 mp_image_transport->is_working(),
-                m_transport_frame_queue.isShutdown(),
-                m_transport_frame_queue.empty(),
+                m_transport_input_queue.isShutdown(),
+                m_transport_input_queue.empty(),
                 mp_tracker->is_working(),
-                m_masked_image_queue.isShutdown(),
-                m_masked_image_queue.empty());
+                m_transport_output_queue.isShutdown(),
+                m_transport_output_queue.empty());
 
             std::chrono::milliseconds sleep_duration{ 500 };
             std::this_thread::sleep_for(sleep_duration);
         }
             spdlog::debug("\n"
-                "m_shutdown                       : {}\n"
-                "mp_image_transport working       : {}\n"
-                "m_transport_frame_queue shutdown : {}\n"
-                "m_transport_frame_queue empty    : {}\n"
-                "mp_tracker working               : {}\n"
-                "m_masked_image_queue shutdown    : {}\n"
-                "m_masked_image_queue empty       : {}",
+                "m_shutdown                           : {}\n"
+                "mp_image_transport working           : {}\n"
+                "m_transport_input_queue shutdown     : {}\n"
+                "m_transport_input_queue empty        : {}\n"
+                "mp_tracker working                   : {}\n"
+                "m_transport_output_queue shutdown    : {}\n"
+                "m_transport_output_queue empty       : {}",
                 m_shutdown,
                 mp_image_transport->is_working(),
-                m_transport_frame_queue.isShutdown(),
-                m_transport_frame_queue.empty(),
+                m_transport_input_queue.isShutdown(),
+                m_transport_input_queue.empty(),
                 mp_tracker->is_working(),
-                m_masked_image_queue.isShutdown(),
-                m_masked_image_queue.empty());
+                m_transport_output_queue.isShutdown(),
+                m_transport_output_queue.empty());
         // clang-format on
 
         if (!m_shutdown)
@@ -129,18 +129,15 @@ namespace oslam
     {
         // Start thread for each component
         auto handle_dataset = std::async(std::launch::async, &oslam::DataReader::run, mp_data_reader);
-        /* auto handle_provider        = std::async(std::launch::async, &oslam::DataProvider::run, mp_data_provider); */
         auto handle_image_transport = std::async(std::launch::async, &oslam::ImageTransporter::run, mp_image_transport);
         auto handle_tracker         = std::async(std::launch::async, &oslam::Tracker::run, mp_tracker);
         auto handle_shutdown        = std::async(std::launch::async, &oslam::Controller::shutdown_when_complete, this);
 
-        /* handle_shutdown.get(); */
+        handle_shutdown.get();
         spdlog::info("Shutdown successful: {}", handle_shutdown.get());
-        /* handle_dataset.get(); */
+        handle_dataset.get();
         spdlog::info("Dataset reader successful: {}", handle_dataset.get());
-        /* handle_provider.get(); */
-        /* spdlog::info("Dataset provider successful: {}", handle_provider.get()); */
-        /* handle_image_transport.get(); */
+        handle_image_transport.get();
         spdlog::info("Image Transporter successful: {}", handle_image_transport.get());
         bool tracker_successful = handle_tracker.get();
 

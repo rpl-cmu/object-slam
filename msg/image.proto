@@ -19,4 +19,10 @@ message MaskImage {
     bytes data = 5;
     repeated uint32 labels = 6;
     repeated double scores = 7;
+
+    message BoundingBox {
+        repeated float coordinates = 1 [packed=true];
+    }
+
+    repeated BoundingBox bboxes = 8;
 }

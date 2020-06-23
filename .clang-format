@@ -13,6 +13,8 @@ BreakBeforeBraces: Allman
 Cpp11BracedListStyle: false
 ColumnLimit: 125
 IndentWidth: 4
+IncludeBlocks: Regroup
+FixNamespaceComments: true
 NamespaceIndentation: All
 SpaceAfterTemplateKeyword: false
 SpaceBeforeCtorInitializerColon: true

@@ -37,7 +37,7 @@ namespace oslam
         OSLAM_POINTER_TYPEDEFS(DataReader);
         OSLAM_DELETE_COPY_CONSTRUCTORS(DataReader);
 
-        using FrameCallback    = std::function<void(const Frame::Ptr&)>;
+        using FrameCallback    = std::function<void(Frame::Ptr)>;
         using ShutdownCallback = std::function<void(Timestamp)>;
 
         explicit DataReader(const std::string &r_root_dir);
