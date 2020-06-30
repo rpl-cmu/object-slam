@@ -23,7 +23,8 @@ namespace oslam
           m_debug(r_args.at("--debug")),
           m_dataset_path(r_args.at("<dataset_path>").asString()),
           m_transport_input_queue("TransportFrameQueue"),
-          m_transport_output_queue("MaskedImageQueue")
+          m_transport_output_queue("MaskedImageQueue"),
+          m_tracker_output_queue("TrackerOutputQueue")
     {
         if (m_debug)
         {
@@ -55,7 +56,7 @@ namespace oslam
     {
         mp_data_reader     = std::make_shared<oslam::DataReader>(m_dataset_path);
         mp_image_transport = std::make_shared<oslam::ImageTransporter>(&m_transport_input_queue, &m_transport_output_queue);
-        mp_tracker         = std::make_shared<oslam::Tracker>(&m_transport_output_queue, nullptr);
+        mp_tracker         = std::make_shared<oslam::Tracker>(&m_transport_output_queue, &m_tracker_output_queue);
 
         mp_data_reader->register_shutdown_callback(
             std::bind(&Tracker::set_max_timestamp, mp_tracker, std::placeholders::_1));

@@ -56,6 +56,8 @@ namespace oslam
 
     ImageTransporter::InputQueue m_transport_input_queue;
     ImageTransporter::OutputQueue m_transport_output_queue;
+
+    Tracker::OutputQueue m_tracker_output_queue;
   };
 }  // namespace oslam
 #endif /* ifndef OSLAM_CONTROLLER_H */

@@ -35,12 +35,13 @@ namespace oslam
 
         //! Constructor accepts masked depth image to size the object volume during
         //! allocation/initialization
-        explicit TSDFObject(const Frame &r_frame, const InstanceImage &r_instance_image,
+        TSDFObject(const Frame &r_frame, const InstanceImage &r_instance_image,
                             const Eigen::Matrix4d &r_camera_pose = Eigen::Matrix4d::Identity(), int resolution = 64);
 
         virtual ~TSDFObject() = default;
 
         [[nodiscard]] bool is_background() const { return (m_instance_image.m_label == 0); }
+        [[nodiscard]] unsigned int get_label() const { return m_instance_image.m_label; }
 
         void integrate(const Frame &r_frame, const InstanceImage &r_instance_image, const Eigen::Matrix4d &r_camera_pose);
 
@@ -69,8 +70,9 @@ namespace oslam
         //! Object volume (Requires delayed construction)
         std::optional<open3d::cuda::ScalableTSDFVolumeCuda> mpc_object_volume;
 
-        // list of frame IDs where observed
-        /* std::vector<std::size_t> m_observations; */
+        //! Existence and non-existence count
+        int m_existence = 1;
+        int m_non_existence = 1;
 
         //! Protection against integration/raycasting from multiple threads
         std::mutex m_object_mutex;

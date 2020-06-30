@@ -24,7 +24,7 @@ namespace oslam
 
     struct TrackerInput : public PipelinePayload
     {
-        using InstanceImages = std::vector<InstanceImage>;
+       public:
         OSLAM_POINTER_TYPEDEFS(TrackerInput);
         TrackerInput(const Timestamp timestamp, const Timestamp prev_maskframe_timestamp, const Frame& r_frame,
                      const InstanceImages& r_instance_images)
@@ -49,18 +49,31 @@ namespace oslam
         DISABLED
     };
 
-    struct TrackerOutputPayload : public PipelinePayload
+    struct TrackerOutput : public PipelinePayload
     {
        public:
-        TrackerOutputPayload(const Timestamp timestamp, const TrackerStatus& r_tracker_status,
-                             const gtsam::Pose3& r_T_camera_2_world)
-            : PipelinePayload(timestamp), m_tracker_status(r_tracker_status), m_T_camera_2_world(r_T_camera_2_world)
+        OSLAM_POINTER_TYPEDEFS(TrackerOutput);
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+        TrackerOutput(const Timestamp timestamp, const Timestamp prev_maskframe_timestamp,
+                      const TrackerStatus& r_tracker_status, const Frame& r_frame, const InstanceImages& r_instance_images,
+                      const Eigen::Matrix4d& r_relative_camera_pose, const Eigen::Matrix6d& r_information_matrix)
+            : PipelinePayload(timestamp),
+              m_prev_maskframe_timestamp(prev_maskframe_timestamp),
+              m_tracker_status(r_tracker_status),
+              m_frame(r_frame),
+              m_instance_images(r_instance_images),
+              m_relative_camera_pose(r_relative_camera_pose),
+              m_information_matrix(r_information_matrix)
         {
         }
 
        public:
+        const Timestamp m_prev_maskframe_timestamp;
         const TrackerStatus m_tracker_status;
-        const gtsam::Pose3 m_T_camera_2_world;
+        const Frame& m_frame;
+        const InstanceImages& m_instance_images;
+        const Eigen::Matrix4d m_relative_camera_pose;
+        const Eigen::Matrix6d m_information_matrix;
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_TRACKER_PAYLOAD_H */

@@ -84,8 +84,8 @@ namespace oslam
         {
             unsigned int curr_label = mask_pbuf.labels(i);
             double curr_score       = mask_pbuf.scores(i);
-            BoundingBox curr_bbox   = { mask_pbuf.bboxes(i).coordinates(0), mask_pbuf.bboxes(i).coordinates(1),
-                                      mask_pbuf.bboxes(i).coordinates(2), mask_pbuf.bboxes(i).coordinates(3) };
+            BoundingBox curr_bbox   = { static_cast<int>(mask_pbuf.bboxes(i).coordinates(0)), static_cast<int>(mask_pbuf.bboxes(i).coordinates(1)),
+                                      static_cast<int>(mask_pbuf.bboxes(i).coordinates(2)), static_cast<int>(mask_pbuf.bboxes(i).coordinates(3)) };
             cv::Mat curr_mask;
             cv::bitwise_and(image, static_cast<std::uint16_t>(1u << i), curr_mask);
             curr_mask = (curr_mask >= 1);

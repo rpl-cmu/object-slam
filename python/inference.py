@@ -119,6 +119,7 @@ def main():
             mask_image.labels.extend(classes)
             mask_image.scores.extend(scores)
             for bbox in bboxes:
+                bbox = bbox + 20;
                 boundingbox = mask_image.bboxes.add()
                 boundingbox.coordinates.extend(bbox)
 

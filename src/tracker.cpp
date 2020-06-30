@@ -9,9 +9,8 @@
 
 #include <Cuda/Common/UtilsCuda.h>
 #include <Cuda/Geometry/GeometryClasses.h>
-#include <Cuda/Geometry/SegmentationCuda.h>
+#include <Cuda/OSLAMUtils/SegmentationCuda.h>
 #include <Cuda/Odometry/RGBDOdometryCuda.h>
-#include <Eigen/src/SVD/JacobiSVD.h>
 #include <Open3D/Visualization/Utility/DrawGeometry.h>
 
 #include <cstdlib>
@@ -19,7 +18,10 @@
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/rgbd/depth.hpp>
 #include <opencv2/opencv.hpp>
+
+#include "utils/utils.h"
 
 namespace oslam
 {
@@ -108,29 +110,32 @@ namespace oslam
         cuda::RGBDImageCuda source_rgbd;
         source_rgbd.Build(mc_curr_depth_raw, mc_curr_color);
 
+        TrackerStatus curr_tracker_status         = TrackerStatus::INVALID;
+        Eigen::Matrix4d curr_relative_camera_pose = Eigen::Matrix4d::Identity();
+        Eigen::Matrix6d curr_information_matrix   = Eigen::Matrix6d::Identity();
         if (m_curr_timestamp == 1)
         {
-            auto current_odometry = Eigen::Matrix4d::Identity();
-
             //! Add Objects to the map and integrate with current_odometry
             {
-                mr_global_map.add_background(curr_frame, current_odometry);
+                std::tie(m_background_id, mp_background) = mr_global_map.create_background(curr_frame, curr_relative_camera_pose);
                 unsigned int i = 0;
                 for (auto &instance_image : instance_images)
                 {
                     spdlog::debug("Current label, score: {}, {}", instance_image.m_label, instance_image.m_score);
-                    mr_global_map.add_object(curr_frame, instance_image, current_odometry);
+                    mr_global_map.create_object(curr_frame, instance_image, curr_relative_camera_pose);
                     spdlog::info("Added object {}", instance_image.m_label);
                     i++;
                 }
                 spdlog::debug("Added all objects");
             }
             //! TODO(Akash): Make a callback to backend with current pose for optimisation
-            mv_T_camera_2_world.emplace_back(current_odometry);
+            mv_T_camera_2_world.emplace_back(curr_relative_camera_pose);
 
             mc_g_prev_color.Create(curr_frame.m_width, curr_frame.m_height);
             mc_g_prev_normal_map.Create(curr_frame.m_width, curr_frame.m_height);
             mc_g_prev_vertex_map.Create(curr_frame.m_width, curr_frame.m_height);
+
+            curr_tracker_status = TrackerStatus::VALID;
         }
         else
         {
@@ -139,62 +144,94 @@ namespace oslam
             cuda::RGBDOdometryCuda<3> odometry;
             odometry.SetIntrinsics(curr_frame.m_intrinsic);
             odometry.SetParameters(odometry::OdometryOption({ 20, 10, 5 }, 0.07), 0.5f, cuda::OdometryType::FRAME_TO_MODEL);
-
+            spdlog::info("Initialize odometry");
             odometry.Initialize(source_rgbd, mc_g_prev_vertex_map, mc_g_prev_normal_map, mc_g_prev_color);
 
-            auto result         = odometry.ComputeMultiScale();
-            auto transformation = std::get<1>(result);
+            auto result               = odometry.ComputeMultiScale();
+            curr_relative_camera_pose = std::get<1>(result);
+            auto success              = std::get<0>(result);
+
+            if (success)
+                curr_tracker_status = TrackerStatus::VALID;
 
             //! TODO(Akash): Send this to backend optimizer
-            /* auto information_matrix = odometry.ComputeInformationMatrix(); */
-
-            auto odometry_time = Timer::toc(odometry_start).count();
+            curr_information_matrix = odometry.ComputeInformationMatrix();
+            auto odometry_time      = Timer::toc(odometry_start).count();
             spdlog::debug("Odometry took {} ms", odometry_time);
-            auto current_odometry = mv_T_camera_2_world.back() * transformation;
+            auto current_odometry = mv_T_camera_2_world.back() * curr_relative_camera_pose;
             mv_T_camera_2_world.emplace_back(current_odometry);
-            auto integration_start = Timer::tic();
-
-            mr_global_map.integrate_background(curr_frame, mv_T_camera_2_world.back());
-
-            {
-                //! Project the masks to current frame
-                auto T_maskcamera_2_world             = mv_T_camera_2_world.at(prev_maskframe_timestamp - 1);
-                auto T_camera_2_world                 = mv_T_camera_2_world.back();
-                Eigen::Matrix4d T_maskcamera_2_camera = T_camera_2_world.inverse() * T_maskcamera_2_world;
-                unsigned int i                        = 0;
-                for (auto &instance_image : instance_images)
-                {
-                    mr_global_map.integrate_object(curr_frame, instance_image, mv_T_camera_2_world.back(),
-                                                   T_maskcamera_2_camera);
-                    i++;
-                }
-            }
-
-            auto integration_time = Timer::toc(integration_start).count();
-            spdlog::debug("Integration took {} ms", integration_time);
         }
+
+        auto integration_start = Timer::tic();
+
+        TrackerOutput::UniquePtr p_output_payload = std::make_unique<TrackerOutput>(
+            p_input->m_timestamp, prev_maskframe_timestamp, curr_tracker_status, curr_frame, instance_images, curr_relative_camera_pose, curr_information_matrix);
+
+        mr_global_map.integrate_background(curr_frame, mv_T_camera_2_world.back());
+
+        {
+            //! Project the masks to current frame
+            auto T_maskcamera_2_world             = mv_T_camera_2_world.at(prev_maskframe_timestamp - 1);
+            auto T_camera_2_world                 = mv_T_camera_2_world.back();
+            Eigen::Matrix4d T_maskcamera_2_camera = T_camera_2_world.inverse() * T_maskcamera_2_world;
+            unsigned int i                        = 0;
+
+            cuda::TransformCuda transform_maskcamera_to_camera;
+            transform_maskcamera_to_camera.FromEigen(T_maskcamera_2_camera);
+            cuda::PinholeCameraIntrinsicCuda intrinsic(curr_frame.m_intrinsic);
+            for (auto &instance_image : instance_images)
+            {
+
+                //! Project the mask from maskframe to current frame
+                cuda::ImageCuda<uchar, 1> src_mask;
+                src_mask.Upload(instance_image.m_maskb);
+                cv::Mat depthf;
+                cv::rgbd::rescaleDepth(curr_frame.m_depth, CV_32F, depthf);
+                cuda::ImageCuda<float, 1> depth;
+                depth.Upload(depthf);
+                auto c_proj_mask =
+                    cuda::SegmentationCuda::TransformAndProject(src_mask, depth, transform_maskcamera_to_camera, intrinsic);
+                cv::Mat src_proj_mask = c_proj_mask.DownloadMat();
+                BoundingBox src_proj_bbox =
+                    transform_project_bbox(instance_image.m_bbox, depthf, curr_frame.m_intrinsic, T_maskcamera_2_camera);
+                /* cv::imshow("Source projected mask", src_proj_mask); */
+
+                InstanceImage proj_instance_image(src_proj_mask, src_proj_bbox, instance_image.m_label, instance_image.m_score);
+                depth.Release();
+
+                bool matched = mr_global_map.integrate_object(curr_frame, proj_instance_image, mv_T_camera_2_world.back());
+
+                if(!matched)
+                    mr_global_map.create_object(curr_frame, proj_instance_image, mv_T_camera_2_world.back());
+                i++;
+            }
+        }
+
+        auto integration_time = Timer::toc(integration_start).count();
+        spdlog::debug("Integration took {} ms", integration_time);
         spdlog::info("Number of objects in map: {}", mr_global_map.size());
 
         auto raycast_start = Timer::tic();
 
-        mr_global_map.raycast_background(mc_g_prev_vertex_map, mc_g_prev_normal_map, mc_g_prev_color,
+        if(mp_background)
+            mr_global_map.raycast(m_background_id, mc_g_prev_vertex_map, mc_g_prev_normal_map, mc_g_prev_color,
                                          mv_T_camera_2_world.back());
 
         auto raycast_time = Timer::toc(raycast_start).count();
         spdlog::debug("Raycast took {} ms", raycast_time);
 
-        cv::Mat color_map  = mc_g_prev_color.DownloadMat();
+        cv::Mat color_map = mc_g_prev_color.DownloadMat();
 
         cv::imshow("Color map", color_map);
         cv::imshow("Source frame", curr_frame.m_color);
-        cv::waitKey();
+        cv::waitKey(1);
 
-        return nullptr;
-    }
+        return p_output_payload;
+    }  // namespace oslam
 
     void Tracker::shutdown_queues()
     {
-        m_frame_queue.shutdown();
         MISOPipelineModule::shutdown_queues();
+        m_frame_queue.shutdown();
     }
 }  // namespace oslam

@@ -11,9 +11,10 @@ add_executable(
   data_reader.cpp
   data_provider.cpp
   image_transport.cpp
-  tracker.cpp
   tsdf_object.cpp
   map.cpp
+  tracker.cpp
+  mapper.cpp
 )
 
 add_subdirectory(utils)

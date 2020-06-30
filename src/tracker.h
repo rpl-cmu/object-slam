@@ -11,6 +11,7 @@
 #include <Cuda/Camera/PinholeCameraIntrinsicCuda.h>
 #include <Cuda/Geometry/ImageCuda.h>
 #include <Cuda/Registration/RegistrationCuda.h>
+#include <Eigen/src/Core/util/Memory.h>
 
 #include <limits>
 #include <memory>
@@ -31,14 +32,14 @@ namespace oslam
      *
      *  Detailed description
      */
-    class Tracker : public MISOPipelineModule<TrackerInput, NullPipelinePayload>
+    class Tracker : public MISOPipelineModule<TrackerInput, TrackerOutput>
     {
        public:
         OSLAM_POINTER_TYPEDEFS(Tracker);
         OSLAM_DELETE_COPY_CONSTRUCTORS(Tracker);
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-        using MISO                 = MISOPipelineModule<TrackerInput, NullPipelinePayload>;
+        using MISO                 = MISOPipelineModule<TrackerInput, TrackerOutput>;
         using TransportOutputQueue = ThreadsafeQueue<ImageTransportOutput::UniquePtr>;
 
         explicit Tracker(TransportOutputQueue* p_transport_output_queue, OutputQueue* p_output_queue);
@@ -71,7 +72,7 @@ namespace oslam
         Timestamp m_max_timestamp            = std::numeric_limits<Timestamp>::max();
 
         //! Vector of trajectory poses w.r.t world coordinate
-        std::vector<Eigen::Matrix4d> mv_T_camera_2_world;
+        std::vector<Eigen::Matrix4d, Eigen::aligned_allocator<Eigen::Matrix4d>> mv_T_camera_2_world;
         //! Camera intrinsics
         cuda::PinholeCameraIntrinsicCuda mc_intrinsic;
 
@@ -81,6 +82,9 @@ namespace oslam
         //! TODO(Akash): Consider coarse-to-fine ICP
         cuda::ImageCuda<float, 3> mc_curr_vertex_map;
         cuda::ImageCuda<float, 3> mc_curr_normal_map;
+
+        ObjectId m_background_id;
+        TSDFObject::Ptr mp_background;
 
         //! Previous frame vertex and normal map in global coordinates
         cuda::ImageCuda<float, 3> mc_g_prev_vertex_map;

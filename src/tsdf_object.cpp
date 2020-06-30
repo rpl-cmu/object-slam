@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <mutex>
+#include <opencv2/core.hpp>
 #include <opencv2/core/mat.hpp>
 #include <tuple>
 #include <vector>
@@ -58,7 +59,10 @@ namespace oslam
 
         //! Subvolume resolution is always 16, truncation distance = 4 * voxel length
         //! Allocate lower memory since we will create multiple TSDF objects
-        mpc_object_volume.emplace(M_SUBVOLUME_RES, voxel_length, 4 * voxel_length, c_object_pose, 500, 8000);
+        if(r_instance_image.m_label == 0)
+            mpc_object_volume.emplace(M_SUBVOLUME_RES, voxel_length, 5 * voxel_length, c_object_pose, 1000, 4000);
+        else
+            mpc_object_volume.emplace(M_SUBVOLUME_RES, voxel_length, 5 * voxel_length, c_object_pose, 1000, 2000);
     }
 
     void TSDFObject::integrate(const Frame &r_frame, const InstanceImage &r_instance_image,
@@ -70,24 +74,36 @@ namespace oslam
         auto object_depth = r_frame.m_depth.clone();  // TODO: How to avoid cloning here?
         object_depth.setTo(0, ~r_instance_image.m_bbox_mask);
 
+        cv::Mat cvt8;
+        cv::convertScaleAbs(object_depth, cvt8, 0.25);
+
         open3d::cuda::RGBDImageCuda c_object_rgbd;
         c_object_rgbd.Upload(object_depth, color);
+
+        /* open3d::cuda::PointCloudCuda object_point_cloud(open3d::cuda::VertexWithColor, r_frame.m_width * r_frame.m_height); */
+        /* object_point_cloud.Build(c_object_rgbd, mc_intrinsic); */
+
+        /* auto pcd = object_point_cloud.Download(); */
+
+        /* open3d::visualization::DrawGeometries({ pcd }, "Object point cloud"); */
+
 
         open3d::cuda::TransformCuda c_camera_2_world;
         c_camera_2_world.FromEigen(r_camera_pose);
 
-        open3d::cuda::ImageCuda<float, 1> c_mask;
-        c_mask.Upload(r_instance_image.m_mask);
+        open3d::cuda::ImageCuda<uchar, 1> c_mask;
+        c_mask.Upload(r_instance_image.m_maskb);
 
         mpc_object_volume->Integrate(c_object_rgbd, mc_intrinsic, c_camera_2_world, c_mask);
-        if(r_frame.m_timestamp % 50 == 0)
+        if(r_frame.m_timestamp % 100 == 0)
         {
             mpc_object_volume->GetAllSubvolumes();
             open3d::cuda::ScalableMeshVolumeCuda mesher(open3d::cuda::VertexWithNormalAndColor, 16,
-                                                        mpc_object_volume->active_subvolume_entry_array_.size(), 2000000, 4000000);
+                                                        mpc_object_volume->active_subvolume_entry_array_.size(), 20000, 40000);
             mesher.MarchingCubes(*mpc_object_volume);
             auto mesh = mesher.mesh().Download();
             open3d::visualization::DrawGeometries({ mesh }, "Mesh after integration");
+            mesher.Release();
         }
     }
 
