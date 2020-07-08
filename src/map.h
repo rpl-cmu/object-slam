@@ -8,14 +8,16 @@
 #ifndef OSLAM_MAP_H
 #define OSLAM_MAP_H
 
+#include <condition_variable>
 #include <map>
-#include <gtsam/nonlinear/NonlinearFactorGraph.h>
+/* #include <gtsam/nonlinear/NonlinearFactorGraph.h> */
 
 #include "frame.h"
 #include "instance_image.h"
 #include "tsdf_object.h"
 #include "utils/macros.h"
 #include "utils/types.h"
+#include "utils/thread_sync_var.h"
 
 namespace oslam
 {
@@ -47,12 +49,14 @@ namespace oslam
         bool integrate_object(const Frame &r_frame, const InstanceImage& r_instance_image,
                               const Eigen::Matrix4d &r_camera_pose);
 
-        void raycast(const ObjectId& r_id, open3d::cuda::ImageCuda<float, 3> &vertex, open3d::cuda::ImageCuda<float, 3> &normal,
+        void raycast_background(open3d::cuda::ImageCuda<float, 3> &vertex, open3d::cuda::ImageCuda<float, 3> &normal,
                                 open3d::cuda::ImageCuda<uchar, 3> &color, const Eigen::Matrix4d &r_camera_pose);
 
         inline std::size_t size() const { return m_id_to_object.size(); }
 
         TSDFObject::ConstPtr get_object(const ObjectId& r_id) const;
+
+        ThreadSyncVar<bool> m_can_raycast;
        private:
         explicit GlobalMap() = default;
 
@@ -62,9 +66,8 @@ namespace oslam
         //! Map is a hashtable of different objects
         IdToObjectMap m_id_to_object;
 
-        TSDFObject::Ptr m_active_background;
+        TSDFObject::Ptr mp_active_background;
 
-        std::mutex m_map_mutex;
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_MAP_H */

@@ -10,10 +10,10 @@
 #include <Cuda/Camera/PinholeCameraIntrinsicCuda.h>
 #include <Cuda/Geometry/ImageCuda.h>
 #include <Open3D/Camera/PinholeCameraIntrinsic.h>
-#include <gtsam/geometry/Pose3.h>
-#include <gtsam/inference/Symbol.h>
-#include <gtsam/slam/BetweenFactor.h>
-#include <gtsam/slam/PriorFactor.h>
+/* #include <gtsam/geometry/Pose3.h> */
+/* #include <gtsam/inference/Symbol.h> */
+/* #include <gtsam/slam/BetweenFactor.h> */
+/* #include <gtsam/slam/PriorFactor.h> */
 #include <spdlog/spdlog.h>
 
 #include <cmath>
@@ -32,8 +32,6 @@ namespace oslam
     std::pair<ObjectId, TSDFObject::Ptr> GlobalMap::create_background(const Frame &r_frame, const Eigen::Matrix4d &r_camera_pose)
     {
         using namespace open3d;
-        //! Don't allow other objects to be added to vector
-        std::scoped_lock<std::mutex> create_bg_lock(m_map_mutex);
 
         //! Create default instance image for background
         InstanceImage background_instance(r_frame.m_width, r_frame.m_height);
@@ -43,7 +41,7 @@ namespace oslam
         auto background_pair = std::make_pair(background_id, p_background);
         auto success_pair = m_id_to_object.insert(background_pair);
 
-        m_active_background = p_background;
+        mp_active_background = p_background;
         if (success_pair.second == true)
         {
             spdlog::debug("Added background");
@@ -60,7 +58,6 @@ namespace oslam
                                       const Eigen::Matrix4d &r_camera_pose)
     {
         //! Don't allow other objects to be added to vector
-        std::scoped_lock<std::mutex> create_object_lock(m_map_mutex);
         if (r_instance_image.m_score < SCORE_THRESHOLD)
         {
             spdlog::warn("Object {} with score {} is below score threshold. Not added", r_instance_image.m_label,
@@ -122,10 +119,8 @@ namespace oslam
 
     bool GlobalMap::integrate_background(const Frame& r_frame, const Eigen::Matrix4d& r_camera_pose)
     {
-        std::scoped_lock<std::mutex> integrate_background_lock(m_map_mutex);
-
         InstanceImage background_instance(r_frame.m_width, r_frame.m_height);
-        m_active_background->integrate(r_frame, background_instance, r_camera_pose);
+        mp_active_background->integrate(r_frame, background_instance, r_camera_pose);
         spdlog::debug("Integrated background");
     }
 
@@ -181,6 +176,7 @@ namespace oslam
                 cv::bitwise_and(r_instance_image.m_maskb, mat_mask, intersection_mask);
                 cv::bitwise_or(r_instance_image.m_maskb, mat_mask, union_mask);
 
+                /* cv::imshow("Intersection mask", intersection_mask); */
                 auto quality = static_cast<float>(cv::countNonZero(intersection_mask)) /
                                static_cast<float>(cv::countNonZero(union_mask));
                 spdlog::debug("Quality of the association: {}, Source label: {}, Target label: {}", quality,
@@ -200,20 +196,13 @@ namespace oslam
         return matched;
     }
 
-    void GlobalMap::raycast(const ObjectId& r_id, open3d::cuda::ImageCuda<float, 3> &vertex, open3d::cuda::ImageCuda<float, 3> &normal,
+    void GlobalMap::raycast_background(open3d::cuda::ImageCuda<float, 3> &vertex, open3d::cuda::ImageCuda<float, 3> &normal,
                                        open3d::cuda::ImageCuda<uchar, 3> &color, const Eigen::Matrix4d &r_camera_pose)
     {
-        std::scoped_lock<std::mutex> raycast_background_lock(m_map_mutex);
         //! Always raycast with the last background entry in the multimap
-        IdToObjectMap::iterator background_it = m_id_to_object.find(r_id);
-        if(background_it == m_id_to_object.end())
-        {
-            spdlog::warn("Background object with object ID: {} does not exist in map", r_id);
-            return;
-        }
-        TSDFObject::Ptr p_background = background_it->second;
         //! TODO: Raycast layered background with objects for better vertices and normals
-        p_background->raycast(vertex, normal, color, r_camera_pose);
+        mp_active_background->raycast(vertex, normal, color, r_camera_pose);
         spdlog::debug("Raycasted background");
     }
+
 }  // namespace oslam

@@ -15,6 +15,7 @@ add_executable(
   map.cpp
   tracker.cpp
   mapper.cpp
+  renderer.cpp
 )
 
 add_subdirectory(utils)
@@ -40,7 +41,6 @@ target_link_libraries(
   opencv_highgui
   opencv_imgproc
   opencv_rgbd
-  gtsam
   ${CMAKE_DL_LIBS}
   proto
 )

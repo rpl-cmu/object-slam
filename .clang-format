@@ -2,7 +2,6 @@
 BasedOnStyle: Google
 AlignConsecutiveMacros: true
 AlignConsecutiveAssignments: true
-AlignAfterOpenBracket: Align
 AllowShortCaseLabelsOnASingleLine: true
 AllowShortBlocksOnASingleLine: true
 AllowShortIfStatementsOnASingleLine: Never
@@ -22,5 +21,8 @@ SpaceBeforeCtorInitializerColon: true
 SpaceBeforeInheritanceColon: true
 SpaceBeforeRangeBasedForLoopColon: true
 SpaceInEmptyParentheses: false
+AlignAfterOpenBracket: AlwaysBreak
+BinPackArguments: false
+BinPackParameters: false
 Standard: Cpp11
 ...

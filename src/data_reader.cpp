@@ -19,7 +19,10 @@
 
 namespace oslam
 {
-    DataReader::DataReader(const std::string &r_root_dir) : m_root_dir(r_root_dir) {}
+    DataReader::DataReader(const std::string &r_root_dir) : m_root_dir(r_root_dir)
+    {
+        spdlog::info("Module (DataReader) started");
+    }
 
     bool DataReader::run()
     {

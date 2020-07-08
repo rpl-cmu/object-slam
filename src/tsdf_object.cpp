@@ -60,9 +60,9 @@ namespace oslam
         //! Subvolume resolution is always 16, truncation distance = 4 * voxel length
         //! Allocate lower memory since we will create multiple TSDF objects
         if(r_instance_image.m_label == 0)
-            mpc_object_volume.emplace(M_SUBVOLUME_RES, voxel_length, 5 * voxel_length, c_object_pose, 1000, 4000);
+            mpc_object_volume.emplace(M_SUBVOLUME_RES, voxel_length, 5 * voxel_length, c_object_pose, 2000, 8000);
         else
-            mpc_object_volume.emplace(M_SUBVOLUME_RES, voxel_length, 5 * voxel_length, c_object_pose, 1000, 2000);
+            mpc_object_volume.emplace(M_SUBVOLUME_RES, voxel_length, 5 * voxel_length, c_object_pose, 2000, 4000);
     }
 
     void TSDFObject::integrate(const Frame &r_frame, const InstanceImage &r_instance_image,
@@ -99,7 +99,7 @@ namespace oslam
         {
             mpc_object_volume->GetAllSubvolumes();
             open3d::cuda::ScalableMeshVolumeCuda mesher(open3d::cuda::VertexWithNormalAndColor, 16,
-                                                        mpc_object_volume->active_subvolume_entry_array_.size(), 20000, 40000);
+                                                        mpc_object_volume->active_subvolume_entry_array_.size(), 2000000, 4000000);
             mesher.MarchingCubes(*mpc_object_volume);
             auto mesh = mesher.mesh().Download();
             open3d::visualization::DrawGeometries({ mesh }, "Mesh after integration");

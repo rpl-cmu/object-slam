@@ -21,6 +21,7 @@
 
 #include "map.h"
 #include "tracker_payload.h"
+#include "renderer_payload.h"
 #include "utils/macros.h"
 #include "utils/pipeline_module.h"
 #include "utils/thread_safe_queue.h"
@@ -39,10 +40,10 @@ namespace oslam
         OSLAM_DELETE_COPY_CONSTRUCTORS(Tracker);
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-        using MISO                 = MISOPipelineModule<TrackerInput, TrackerOutput>;
-        using TransportOutputQueue = ThreadsafeQueue<ImageTransportOutput::UniquePtr>;
+        using MISO = MISOPipelineModule<TrackerInput, TrackerOutput>;
+        using RendererOutputQueue = ThreadsafeQueue<RendererOutput::UniquePtr>;
 
-        explicit Tracker(TransportOutputQueue* p_transport_output_queue, OutputQueue* p_output_queue);
+        Tracker(RendererOutputQueue* p_renderer_output_queue, OutputQueue* p_output_queue);
         virtual ~Tracker() = default;
 
         void fill_frame_queue(Frame::Ptr p_frame) { m_frame_queue.push(std::make_unique<Frame>(*p_frame)); }
@@ -60,15 +61,13 @@ namespace oslam
 
         //! Input Queues which are to be synchronised
         ThreadsafeQueue<Frame::UniquePtr> m_frame_queue;
-        TransportOutputQueue* mp_transport_output_queue;
-        ImageTransportOutput::UniquePtr mp_prev_transport_output;
+        RendererOutputQueue* mp_renderer_output_queue;
 
         //! Reference to the global map
         GlobalMap& mr_global_map;
 
         //! Current timestamp being processed
-        Timestamp m_curr_timestamp           = 0;
-        Timestamp m_prev_maskframe_timestamp = 0;
+        Timestamp m_curr_timestamp = 0;
         Timestamp m_max_timestamp            = std::numeric_limits<Timestamp>::max();
 
         //! Vector of trajectory poses w.r.t world coordinate

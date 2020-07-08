@@ -15,6 +15,7 @@
 #include <spdlog/common.h>
 #include <spdlog/spdlog.h>
 #include <string>
+#include <thread>
 #include <utility>// for move
 #include <vector>
 
@@ -46,7 +47,10 @@ class PipelineModuleBase
      * @brief PipelineModuleBase
      * @param
      */
-    PipelineModuleBase(const std::string &name_id) : name_id_(name_id) {}
+    PipelineModuleBase(const std::string &name_id) : name_id_(name_id)
+    {
+        spdlog::info("Module ({}) started", name_id);
+    }
 
     virtual ~PipelineModuleBase() = default;
 
