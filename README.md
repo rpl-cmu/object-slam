@@ -6,15 +6,15 @@ Object SLAM is an implementation of semantic RGB-D SLAM that employs recognized 
 
 - [x] RGBD odometry test using Open3D
 - [x] Refactor datareader to read in separate thread
-- [x] Transfer and run DNN inference on RGB image in parallel (doesn't work well)
+- [x] Transfer and run DNN inference on RGB image in parallel
 - [x] Create Pipeline abstract class (similar to Kimera (don't forget license)) to streamline async tasks
 - [x] Run Segmentation as a separate task properly (at lower rate)
 - [x] Implement Frame to SDF Tracking
 - [x] Implement coarse to fine / gaussian pyramid tracking (done for single object)
 - [x] Shutdown system on completion of the dataset
-- [ ] Move raycasting into mapping thread
-- [ ] Design Mapping thread
-- [ ] Obtain APIs from Wei for tracker thread
+- [x] Mapping and association into mapper thread
+- [x] Move raycasting into renderer thread
+- [ ] Create posegraph using constant information matrices/constraints
 - [ ] Launch PointRend and C++ program at once, using bash script (low priority)
 
 ## Requirements and Dependencies
