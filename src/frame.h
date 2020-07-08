@@ -9,90 +9,65 @@
 #define OSLAM_FRAME_H
 
 #include <Open3D/Open3D.h>
-
+#include <opencv2/opencv.hpp>
 #include <Eigen/Eigen>
+
 #include <utility>
 #include <vector>
 
-#include "masked_image.h"
 #include "utils/macros.h"
 #include "utils/pipeline_payload.h"
 
 namespace oslam
 {
-  using namespace open3d;
+    using namespace open3d;
 
-  /*! \class Frame
-   *  \brief Encapsulation data structure for a single RGBD frame
-   */
-  class Frame : public PipelinePayload
-  {
-   public:
-    OSLAM_POINTER_TYPEDEFS(Frame);
-
-    //! Constructor
-    //! Frame maintains a reference to the images.
-    //! Required to clone if frame needs to own the images
-    //! TODO(Akash): Is it safe to maintain a reference to non-owned Image objects?
-    //! TODO(Akash): Open3D does not provide clone API for images..
-    explicit Frame(std::uint64_t frame_id, const camera::PinholeCameraIntrinsic &r_intrinsic, const geometry::Image &r_color,
-                   const geometry::Image &r_depth, bool is_maskframe = false,
-                   const geometry::Image &r_gt_mask = geometry::Image(), const std::vector<unsigned int> &r_gt_labels = {},
-                   const std::vector<double> &r_gt_scores = {});
-
-    ~Frame() override = default;
-
-    //! Copy constructor
-    Frame(const Frame &r_frame)
-        : PipelinePayload(r_frame.m_timestamp),
-          m_intrinsic(r_frame.m_intrinsic),
-          m_color(r_frame.m_color),
-          m_depth(r_frame.m_depth),
-          m_color_mat(r_frame.m_color_mat),
-          m_depth_mat(r_frame.m_depth_mat),
-          m_is_maskframe(r_frame.m_is_maskframe),
-          m_gt_mask(r_frame.m_gt_mask)
+    /*! \class Frame
+     *  \brief Encapsulation data structure for RGB + Depth information
+     */
+    struct Frame : public PipelinePayload
     {
-      mp_rgbd = geometry::RGBDImage::CreateFromColorAndDepth(m_color, m_depth, 1000, 3.0, false);
+       public:
+        OSLAM_POINTER_TYPEDEFS(Frame);
+
+        explicit Frame(Timestamp timestamp, const cv::Mat &r_color, const cv::Mat &r_depth,
+                       const camera::PinholeCameraIntrinsic &r_intrinsic, bool is_maskframe = false)
+            : PipelinePayload(timestamp),
+              m_width(r_color.cols),
+              m_height(r_color.rows),
+              m_color(r_color),
+              m_depth(r_depth),
+              m_intrinsic(r_intrinsic),
+              m_is_maskframe(is_maskframe){};
+
+        ~Frame() override = default;
+
+        //! Copy constructor
+        Frame(const Frame &r_frame)
+            : PipelinePayload(r_frame.m_timestamp),
+              m_width(r_frame.m_width),
+              m_height(r_frame.m_height),
+              m_color(r_frame.m_color),
+              m_depth(r_frame.m_depth),
+              m_intrinsic(r_frame.m_intrinsic),
+              m_is_maskframe(r_frame.m_is_maskframe){};
+
+       public:
+        //! Frame size
+        const int m_width  = -1;
+        const int m_height = -1;
+        //! Color and depth images
+        const cv::Mat m_color;
+        const cv::Mat m_depth;
+
+        //! Camera intrinsics
+        const camera::PinholeCameraIntrinsic m_intrinsic;
+
+        //! We decide at read whether a frame needs instance segmentation
+        const bool m_is_maskframe = { false };
+
+        //! Pose of the frame
+        Eigen::Matrix4d m_pose = Eigen::Matrix4d::Identity();
     };
-
-    //! Required for image transport
-    [[nodiscard]] inline geometry::Image get_color() const { return m_color; }
-    [[nodiscard]] inline geometry::Image get_depth() const { return m_depth; }
-    [[nodiscard]] inline cv::Mat get_color_mat() const { return m_color_mat; }
-    [[nodiscard]] inline cv::Mat get_depth_mat() const { return m_depth_mat; }
-
-    [[nodiscard]] inline camera::PinholeCameraIntrinsic get_intrinsics() const { return m_intrinsic; }
-
-    //! Required for Odometry functions
-    [[nodiscard]] inline std::shared_ptr<geometry::RGBDImage> get_rgbd() const { return mp_rgbd; }
-
-    [[nodiscard]] inline Eigen::Matrix4d get_pose() const { return m_pose; }
-    inline void set_pose(Eigen::Matrix4d pose) { m_pose = std::move(pose); }
-
-    [[nodiscard]] inline bool is_maskframe() const { return m_is_maskframe; }
-
-   private:
-    //! Camera intrinsics
-    camera::PinholeCameraIntrinsic m_intrinsic;
-
-    //! Color and depth images
-    geometry::Image m_color;
-    geometry::Image m_depth;
-    cv::Mat m_color_mat;
-    cv::Mat m_depth_mat;
-
-    //! We decide at read whether a frame needs instance segmentation
-    const bool m_is_maskframe = { false };
-
-    //! Groundtruth segmentation mask and labels/scores from dataset if available
-    MaskedImage m_gt_mask;
-
-    //! Pose of the frame
-    Eigen::Matrix4d m_pose = Eigen::Matrix4d::Identity();
-
-    //! RGBD object of the frame constructed from color and depth images
-    std::shared_ptr<geometry::RGBDImage> mp_rgbd;
-  };
 }  // namespace oslam
 #endif /* ifndef OSLAM_FRAME_H */

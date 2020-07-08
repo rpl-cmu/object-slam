@@ -14,124 +14,127 @@
 #include <boost/filesystem/operations.hpp>
 #include <functional>
 #include <memory>
+#include <opencv2/imgcodecs.hpp>
 #include <vector>
 
 namespace oslam
 {
-  DataReader::DataReader(const std::string &r_root_dir) : m_root_dir(r_root_dir) {}
-
-  bool DataReader::run()
-  {
-    if (!m_shutdown && !m_dataset_parsed)
+    DataReader::DataReader(const std::string &r_root_dir) : m_root_dir(r_root_dir)
     {
-      m_dataset_parsed = parse_dataset();
+        spdlog::info("Module (DataReader) started");
     }
 
-    if (m_dataset_parsed)
+    bool DataReader::run()
     {
-      while (!m_shutdown && read_frame())
-      {
-        ++m_current_index;
-      }
+        if (!m_shutdown && !m_dataset_parsed)
+        {
+            m_dataset_parsed = parse_dataset();
+        }
+
+        if (m_dataset_parsed)
+        {
+            while (!m_shutdown && read_frame())
+            {
+                ++m_current_index;
+            }
+        }
+
+        if (m_shutdown)
+        {
+            spdlog::info("DataReader Shutdown requested");
+        }
+        return false;
     }
 
-    if (m_shutdown)
+    bool DataReader::parse_dataset()
     {
-      spdlog::info("DataReader Shutdown requested");
-    }
-    return false;
-  }
+        if (!fs::exists(m_root_dir) || !fs::is_directory(m_root_dir))
+        {
+            spdlog::error("Incorrect dataset path");
+        }
 
-  bool DataReader::parse_dataset()
-  {
-    if (!fs::exists(m_root_dir) || !fs::is_directory(m_root_dir))
-    {
-      spdlog::error("Incorrect dataset path");
-    }
+        fs::path color_files_path = m_root_dir / "color";
+        fs::path depth_files_path = m_root_dir / "depth";
+        fs::path mask_files_path  = m_root_dir / "preprocessed";
+        fs::path intrinsic_path   = m_root_dir / "camera-intrinsics.json";
 
-    fs::path color_files_path = m_root_dir / "color";
-    fs::path depth_files_path = m_root_dir / "depth";
-    fs::path mask_files_path  = m_root_dir / "preprocessed";
-    fs::path intrinsic_path   = m_root_dir / "camera-intrinsics.json";
+        spdlog::debug("{}, {}, {}", color_files_path.string(), depth_files_path.string(), mask_files_path.string());
 
-    spdlog::debug("{}, {}, {}", color_files_path.string(), depth_files_path.string(), mask_files_path.string());
+        copy(fs::directory_iterator(color_files_path), fs::directory_iterator(), std::back_inserter(m_rgb_files));
+        copy(fs::directory_iterator(depth_files_path), fs::directory_iterator(), std::back_inserter(m_depth_files));
 
-    copy(fs::directory_iterator(color_files_path), fs::directory_iterator(), std::back_inserter(m_rgb_files));
-    copy(fs::directory_iterator(depth_files_path), fs::directory_iterator(), std::back_inserter(m_depth_files));
+        for (auto &file : fs::directory_iterator(mask_files_path))
+        {
+            if (file.path().extension() == ".png")
+            {
+                m_mask_files.push_back(file);
+            }
+            else if (file.path().extension() == ".txt")
+            {
+                m_label_files.push_back(file);
+            }
+            else
+            {
+                spdlog::error("Groundtruth segmentation has incorrect extension", file.path());
+            }
+        }
 
-    for (auto &file : fs::directory_iterator(mask_files_path))
-    {
-      if (file.path().extension() == ".png")
-      {
-        m_mask_files.push_back(file);
-      }
-      else if (file.path().extension() == ".txt")
-      {
-        m_label_files.push_back(file);
-      }
-      else
-      {
-        spdlog::error("Groundtruth segmentation has incorrect extension", file.path());
-      }
-    }
+        sort(m_rgb_files.begin(), m_rgb_files.end());
+        sort(m_depth_files.begin(), m_depth_files.end());
+        sort(m_mask_files.begin(), m_mask_files.end());
 
-    sort(m_rgb_files.begin(), m_rgb_files.end());
-    sort(m_depth_files.begin(), m_depth_files.end());
-    sort(m_mask_files.begin(), m_mask_files.end());
+        if (m_rgb_files.size() != m_depth_files.size())
+        {
+            spdlog::error("Number of Color images and Depth images do not match");
+        }
 
-    if (m_rgb_files.size() != m_depth_files.size())
-    {
-      spdlog::error("Number of Color images and Depth images do not match");
-    }
+        if (!fs::exists(intrinsic_path) || !fs::is_regular_file(intrinsic_path))
+        {
+            spdlog::error("Could not find camera intrinsics");
+        }
 
-    if (!fs::exists(intrinsic_path) || !fs::is_regular_file(intrinsic_path))
-    {
-      spdlog::error("Could not find camera intrinsics");
-    }
+        open3d::io::ReadIJsonConvertible(intrinsic_path.string(), m_intrinsic);
 
-    open3d::io::ReadIJsonConvertible(intrinsic_path.string(), m_intrinsic);
-
-    m_size = m_rgb_files.size();
-    spdlog::info("Total number of files: {}", m_rgb_files.size());
-    return true;
-  }
-
-  bool DataReader::read_frame()
-  {
-    if (m_current_index >= m_size)
-    {
-      for (const auto &callback : m_shutdown_callbacks)
-      {
-        callback(m_current_index);
-      }
-      return false;
+        m_size = m_rgb_files.size();
+        spdlog::info("Total number of files: {}", m_rgb_files.size());
+        return true;
     }
 
-    using namespace open3d::io;
+    bool DataReader::read_frame()
+    {
+        if (m_current_index >= m_size)
+        {
+            for (const auto &callback : m_shutdown_callbacks)
+            {
+                callback(m_current_index);
+            }
+            return false;
+        }
 
-    spdlog::debug("Reading files: \n{} \n{} \n{}", m_rgb_files.at(m_current_index).string(),
-                  m_depth_files.at(m_current_index).string(), m_mask_files.at(m_current_index).string());
+        using namespace open3d::io;
 
-    open3d::geometry::Image color;
-    open3d::geometry::Image depth;
-    open3d::geometry::Image gt_mask;
-    ReadImage(m_rgb_files.at(m_current_index).string(), color);
-    ReadImage(m_depth_files.at(m_current_index).string(), depth);
-    ReadImage(m_mask_files.at(m_current_index).string(), gt_mask);
+        spdlog::debug("Reading files: \n{} \n{} \n{}", m_rgb_files.at(m_current_index).string(),
+                      m_depth_files.at(m_current_index).string(), m_mask_files.at(m_current_index).string());
 
-    // TODO:(Akash) Read ground truth pose from file conditionally based on input parameter
-    /* p_data->gt_pose = Eigen::Matrix4d::Identity(); */
+        cv::Mat color   = cv::imread(m_rgb_files.at(m_current_index).string(), cv::IMREAD_COLOR);
+        cv::Mat depth   = cv::imread(m_depth_files.at(m_current_index).string(), cv::IMREAD_ANYDEPTH);
+        cv::Mat gt_mask = cv::imread(m_mask_files.at(m_current_index).string());
 
-    // Every 10th frame requires semantic segmentation
-    m_provider_callback(
-        std::make_unique<Frame>(m_current_index + 1, m_intrinsic, color, depth, (m_current_index % 10) == 0));
-    return true;
-  }
+        // TODO:(Akash) Read ground truth pose from file conditionally based on input parameter
+        /* p_data->gt_pose = Eigen::Matrix4d::Identity(); */
 
-  void DataReader::shutdown()
-  {
-    spdlog::info("Shutting down DataReader on demand");
-    m_shutdown = true;
-  }
+        // Every 10th frame requires semantic segmentation
+        for (const auto &callback : m_output_callbacks)
+        {
+            callback(std::make_unique<Frame>(m_current_index + 1, color, depth, m_intrinsic, (m_current_index % 10) == 0));
+        }
+        return true;
+    }
+
+    void DataReader::shutdown()
+    {
+        spdlog::info("Shutting down DataReader on demand");
+        m_shutdown = true;
+    }
 
 }  // namespace oslam

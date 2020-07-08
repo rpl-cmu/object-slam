@@ -8,56 +8,66 @@
 #ifndef OSLAM_MAP_H
 #define OSLAM_MAP_H
 
+#include <condition_variable>
 #include <map>
+/* #include <gtsam/nonlinear/NonlinearFactorGraph.h> */
 
 #include "frame.h"
+#include "instance_image.h"
 #include "tsdf_object.h"
 #include "utils/macros.h"
 #include "utils/types.h"
+#include "utils/thread_sync_var.h"
 
 namespace oslam
 {
-  /*! \class GlobalMap
-   *  \brief Brief class description
-   *
-   *  Detailed description
-   */
-  class GlobalMap
-  {
-    using LabelToObjectsMap = std::multimap<ObjectLabelId, TSDFObject::UniquePtr>;
-
-   public:
-    OSLAM_DELETE_COPY_CONSTRUCTORS(GlobalMap);
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-    //! Singleton Global map object
-    static GlobalMap &get_instance()
+    /*! \class GlobalMap
+     *  \brief Brief class description
+     *
+     *  Detailed description
+     */
+    class GlobalMap
     {
-      static GlobalMap global_map;
-      return global_map;
-    }
-    virtual ~GlobalMap() { m_label_to_objects.clear(); }
+        using IdToObjectMap = std::unordered_map<ObjectId, TSDFObject::Ptr>;
 
-    void add_background(const Frame &r_frame, const Eigen::Matrix4d &r_camera_pose);
+       public:
+        OSLAM_DELETE_COPY_CONSTRUCTORS(GlobalMap);
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    void add_object(const Frame &r_frame, const cv::Mat &r_mask, unsigned int label, double score,
-                    const Eigen::Matrix4d &r_camera_pose);
+        //! Singleton Global map object
+        static GlobalMap &get_instance()
+        {
+            static GlobalMap global_map;
+            return global_map;
+        }
+        virtual ~GlobalMap() { m_id_to_object.clear(); }
 
-    void integrate_background(const Frame &r_frame, const Eigen::Matrix4d &r_camera_pose);
-    void integrate_object(const Frame &r_frame, const cv::Mat &r_mask, unsigned int label, double score,
-                          const Eigen::Matrix4d &r_camera_pose, const Eigen::Matrix4d &r_T_maskcamera_2_camera);
+        std::pair<ObjectId, TSDFObject::Ptr> create_background(const Frame &r_frame, const Eigen::Matrix4d &r_camera_pose);
+        std::pair<ObjectId, TSDFObject::Ptr> create_object(const Frame &r_frame, const InstanceImage &r_instance_image, const Eigen::Matrix4d &r_camera_pose);
 
-    void raycast_background(open3d::cuda::ImageCuda<float, 3> &vertex, open3d::cuda::ImageCuda<float, 3> &normal,
-                            open3d::cuda::ImageCuda<uchar, 3> &color, const Eigen::Matrix4d &r_camera_pose);
+        bool integrate_background(const Frame& r_frame, const Eigen::Matrix4d& r_camera_pose);
+        bool integrate_object(const Frame &r_frame, const InstanceImage& r_instance_image,
+                              const Eigen::Matrix4d &r_camera_pose);
 
-   private:
-    explicit GlobalMap() = default;
+        void raycast_background(open3d::cuda::ImageCuda<float, 3> &vertex, open3d::cuda::ImageCuda<float, 3> &normal,
+                                open3d::cuda::ImageCuda<uchar, 3> &color, const Eigen::Matrix4d &r_camera_pose);
 
-    constexpr static double SCORE_THRESHOLD = 0.6;
-    //! Map contains a multimap of objects (multiple instances of an object label)
-    LabelToObjectsMap m_label_to_objects;
+        inline std::size_t size() const { return m_id_to_object.size(); }
 
-    std::mutex m_map_mutex;
-  };
+        TSDFObject::ConstPtr get_object(const ObjectId& r_id) const;
+
+        ThreadSyncVar<bool> m_can_raycast;
+       private:
+        explicit GlobalMap() = default;
+
+        constexpr static double SCORE_THRESHOLD = 0.5;
+        constexpr static int MASK_AREA_THRESHOLD = 2500;
+
+        //! Map is a hashtable of different objects
+        IdToObjectMap m_id_to_object;
+
+        TSDFObject::Ptr mp_active_background;
+
+    };
 }  // namespace oslam
 #endif /* ifndef OSLAM_MAP_H */

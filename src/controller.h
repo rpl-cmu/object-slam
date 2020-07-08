@@ -15,14 +15,15 @@
 #include <memory>
 #include <zmq.hpp>
 
+#include "utils/macros.h"
+
 #include "data_provider.h"
 #include "data_reader.h"
 #include "image_transport.h"
 #include "map.h"
 #include "tracker.h"
-#include "utils/macros.h"
-#include "utils/thread_class.h"
-/* #include "visualizer.h" */
+#include "mapper.h"
+#include "renderer.h"
 
 namespace oslam
 {
@@ -53,10 +54,16 @@ namespace oslam
     DataProvider::Ptr mp_data_provider;
     ImageTransporter::Ptr mp_image_transport;
     Tracker::Ptr mp_tracker;
+    Mapper::Ptr mp_mapper;
+    Renderer::Ptr mp_renderer;
 
-    DataProvider::InputQueue m_data_provider_input_queue;
-    ImageTransporter::InputQueue m_transport_frame_queue;
-    ImageTransporter::OutputQueue m_masked_image_queue;
+    ImageTransporter::InputQueue m_transport_input_queue;
+    ImageTransporter::OutputQueue m_transport_output_queue;
+
+    Tracker::OutputQueue m_tracker_output_queue;
+
+    Renderer::InputQueue m_renderer_input_queue;
+    Renderer::OutputQueue m_renderer_output_queue;
   };
 }  // namespace oslam
 #endif /* ifndef OSLAM_CONTROLLER_H */
