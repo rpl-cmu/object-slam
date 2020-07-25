@@ -27,35 +27,30 @@ namespace oslam
 {
     /*! \class ImageTransporter
      *  \brief Transport frame object to Python process running PointRend inference for segmentation
-     *
-     *  Detailed description
      */
     class ImageTransporter : public SISOPipelineModule<Frame, ImageTransportOutput>
     {
        public:
         OSLAM_POINTER_TYPEDEFS(ImageTransporter);
         OSLAM_DELETE_COPY_CONSTRUCTORS(ImageTransporter);
-
         using SISO = SISOPipelineModule<Frame, ImageTransportOutput>;
 
-        explicit ImageTransporter(SISO::InputQueue* p_input_queue, SISO::OutputQueue* p_output_queue);
+        explicit ImageTransporter(SISO::InputQueue* input_queue, SISO::OutputQueue* output_queue);
         virtual ~ImageTransporter() = default;
 
-        virtual OutputUniquePtr run_once(InputUniquePtr p_frame) override;
+        virtual ImageTransportOutput::UniquePtr runOnce(Frame::UniquePtr frame) override;
 
        protected:
-        ImageTransportOutput::UniquePtr process(Frame::UniquePtr p_frame);
+        ImageTransportOutput::UniquePtr process(Frame::UniquePtr frame);
 
-        //! Serialize the image to send to server
-        std::string serialize_frame(const Frame& r_frame);
+        //! \brief Serialize the image to send to server
+        std::string serializeFrame(const Frame& frame);
 
-        //! Deserialize the received image from server
-        ImageTransportOutput::UniquePtr deserialize_frame(Timestamp timestamp, const MaskImage& r_mask_pbuf);
+        //! \brief Deserialize the received image from server
+        ImageTransportOutput::UniquePtr deserializeFrame(Timestamp timestamp, const MaskImage& mask_pbuf);
 
-        //! Shared ZMQ context for this thread to receive and send data
-        zmq::context_t m_context{ 1 };
-        //! ZMQ socket to send request to Python server
-        zmq::socket_t m_request_sock;
+        zmq::context_t context_{ 1 };  //!< Shared ZMQ context for thread to receive and send data
+        zmq::socket_t req_sock_;       //!< ZMQ socket to send request to Python server
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_IMAGE_TRANSPORT_H */

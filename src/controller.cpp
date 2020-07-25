@@ -18,134 +18,143 @@
 
 namespace oslam
 {
-    Controller::Controller(const std::map<std::string, docopt::value> &r_args)
-        : m_visualize(r_args.at("--vis")),
-          m_debug(r_args.at("--debug")),
-          m_dataset_path(r_args.at("<dataset_path>").asString()),
-          m_transport_input_queue("TransportFrameQueue"),
-          m_transport_output_queue("MaskedImageQueue"),
-          m_tracker_output_queue("TrackerOutputQueue"),
-          m_renderer_input_queue("RendererInputQueue"),
-          m_renderer_output_queue("RendererOutputQueue")
+    Controller::Controller(const std::string& dataset_path)
+        : dataset_path_(dataset_path),
+          transport_input_queue_("TransportFrameQueue"),
+          transport_output_queue_("MaskedImageQueue"),
+          tracker_output_queue_("TrackerOutputQueue"),
+          renderer_input_queue_("RendererInputQueue"),
+          renderer_output_queue_("RendererOutputQueue")
     {
-        if (m_debug)
-        {
-            spdlog::set_level(spdlog::level::debug);
-        }
-        spdlog::info("m_debug, m_visualize: ({}, {})", m_debug, m_visualize);
+        spdlog::debug("CONSTRUCT: Controller");
         spdlog::info("Thread ({}, {}) started", "ControllerThread", std::this_thread::get_id());
+
+        //!TODO: Required?
+        CheckCuda(cudaSetDevice(0));
+
+        map_ = std::make_shared<oslam::Map>();
+
+        data_reader_     = std::make_shared<oslam::DataReader>(dataset_path_);
+        image_transport_ = std::make_shared<oslam::ImageTransporter>(&transport_input_queue_, &transport_output_queue_);
+        tracker_         = std::make_shared<oslam::Tracker>(&renderer_output_queue_, &tracker_output_queue_);
+        mapper_          = std::make_shared<oslam::Mapper>(map_, &tracker_output_queue_, &transport_output_queue_, &renderer_input_queue_);
+        renderer_        = std::make_shared<oslam::Renderer>(map_, &renderer_input_queue_, &renderer_output_queue_);
     }
 
-    int Controller::start()
+    bool Controller::start()
     {
+        std::string figlet =
+         R"(
+             ____  __     _         __  ______   ___   __  ___
+            / __ \/ /    (_)__ ____/ /_/ __/ /  / _ | /  |/  /
+           / /_/ / _ \  / / -_) __/ __/\ \/ /__/ __ |/ /|_/ /
+           \____/_.__/_/ /\__/\__/\__/___/____/_/ |_/_/  /_/
+                    |___/
+           )";
+        std::cout << figlet << "\n";
+        //! TODO: Add license
         if (setup())
         {
             run();
-            return 0;
+            return true;
         }
-        return -1;
+        return false;
     }
 
     void Controller::shutdown()
     {
         // TODO(Akash): Check whether the modules are running / queues are empty, etc.
-        mp_data_reader->shutdown();
-        mp_image_transport->shutdown();
-        mp_tracker->shutdown();
-        mp_mapper->shutdown();
-        mp_renderer->shutdown();
+        data_reader_->shutdown();
+        image_transport_->shutdown();
+        tracker_->shutdown();
+        mapper_->shutdown();
+        renderer_->shutdown();
     }
 
     bool Controller::setup()
     {
-        mp_data_reader     = std::make_shared<oslam::DataReader>(m_dataset_path);
-        mp_image_transport = std::make_shared<oslam::ImageTransporter>(&m_transport_input_queue, &m_transport_output_queue);
-        mp_tracker         = std::make_shared<oslam::Tracker>(&m_renderer_output_queue, &m_tracker_output_queue);
-        mp_mapper          = std::make_shared<oslam::Mapper>(&m_tracker_output_queue, &m_transport_output_queue, &m_renderer_input_queue);
-        mp_renderer        = std::make_shared<oslam::Renderer>(&m_renderer_input_queue, &m_renderer_output_queue);
+        data_reader_->registerShutdownCallback(
+            std::bind(&Tracker::setMaxTimestamp, tracker_, std::placeholders::_1));
 
-        mp_data_reader->register_shutdown_callback(
-            std::bind(&Tracker::set_max_timestamp, mp_tracker, std::placeholders::_1));
-
-        mp_data_reader->register_shutdown_callback(
-            std::bind(&Mapper::set_max_timestamp, mp_mapper, std::placeholders::_1));
+        data_reader_->registerShutdownCallback(
+            std::bind(&Mapper::setMaxTimestamp, mapper_, std::placeholders::_1));
 
         //! DataReader fills the ImageTransporter Input Queue
-        auto &transport_frame_queue = m_transport_input_queue;
-        mp_data_reader->register_output_callback([&transport_frame_queue](Frame::Ptr p_frame) {
-            if (p_frame->m_is_maskframe)
-                transport_frame_queue.push(std::make_unique<Frame>(*p_frame));
+        auto &transport_frame_queue = transport_input_queue_;
+        data_reader_->registerOutputCallback([&transport_frame_queue](Frame::Ptr frame) {
+            if (frame->is_maskframe_)
+                transport_frame_queue.push(std::make_unique<Frame>(*frame));
         });
         //! DataReader also fills the Tracker Frame Queue
-        mp_data_reader->register_output_callback(std::bind(&Tracker::fill_frame_queue, mp_tracker, std::placeholders::_1));
+        data_reader_->registerOutputCallback(std::bind(&Tracker::fillFrameQueue, tracker_, std::placeholders::_1));
 
-        return mp_data_reader && mp_image_transport && mp_tracker && mp_mapper;
+        return (data_reader_ && image_transport_ && tracker_ && mapper_ && renderer_);
     }
 
-    bool Controller::shutdown_when_complete()
+    bool Controller::shutdownWhenComplete()
     {
         // clang-format off
-        while (!m_shutdown &&
-                ((mp_image_transport->is_working() || (!m_transport_input_queue.isShutdown()  && !m_transport_input_queue.empty())) ||
-                 (mp_tracker->is_working()         || (!m_transport_output_queue.isShutdown() && !m_transport_output_queue.empty())) ||
-                 (mp_mapper->is_working()          || (!m_tracker_output_queue.isShutdown()   && !m_tracker_output_queue.empty())) ||
-                 (mp_renderer->is_working()        || (!m_renderer_input_queue.isShutdown() && !m_renderer_input_queue.empty())) ||
-                 (!m_renderer_output_queue.isShutdown() && !m_renderer_output_queue.empty())
+        while (!shutdown_ &&
+                ((image_transport_->isWorking() || (!transport_input_queue_.isShutdown()  && !transport_input_queue_.empty())) ||
+                 (tracker_->isWorking()         || (!transport_output_queue_.isShutdown() && !transport_output_queue_.empty())) ||
+                 (mapper_->isWorking()          || (!tracker_output_queue_.isShutdown()   && !tracker_output_queue_.empty())) ||
+                 (renderer_->isWorking()        || (!renderer_input_queue_.isShutdown()   && !renderer_input_queue_.empty())) ||
+                 (!renderer_output_queue_.isShutdown() && !renderer_output_queue_.empty())
                 )
               )
         {
             spdlog::debug("\n"
-                "m_shutdown                           : {}\n"
-                "mp_image_transport working           : {}\n"
-                "m_transport_input_queue shutdown     : {}\n"
-                "m_transport_input_queue empty        : {}\n"
-                "mp_tracker working                   : {}\n"
-                "m_transport_output_queue shutdown    : {}\n"
-                "m_transport_output_queue empty       : {}\n"
-                "mp_mapper working                    : {}\n"
-                "m_tracker_output_queue shutdown      : {}\n"
-                "m_tracker_output_queue empty         : {}",
-                m_shutdown,
-                mp_image_transport->is_working(),
-                m_transport_input_queue.isShutdown(),
-                m_transport_input_queue.empty(),
-                mp_tracker->is_working(),
-                m_transport_output_queue.isShutdown(),
-                m_transport_output_queue.empty(),
-                mp_mapper->is_working(),
-                m_tracker_output_queue.isShutdown(),
-                m_tracker_output_queue.empty());
+                "shutdown_                           : {}\n"
+                "image_transport_ working            : {}\n"
+                "transport_input_queue_ shutdown     : {}\n"
+                "transport_input_queue_ empty        : {}\n"
+                "tracker_ working                    : {}\n"
+                "transport_output_queue_ shutdown    : {}\n"
+                "transport_output_queue_ empty       : {}\n"
+                "mapper_ working                     : {}\n"
+                "tracker_output_queue_ shutdown      : {}\n"
+                "tracker_output_queue_ empty         : {}",
+                shutdown_,
+                image_transport_->isWorking(),
+                transport_input_queue_.isShutdown(),
+                transport_input_queue_.empty(),
+                tracker_->isWorking(),
+                transport_output_queue_.isShutdown(),
+                transport_output_queue_.empty(),
+                mapper_->isWorking(),
+                tracker_output_queue_.isShutdown(),
+                tracker_output_queue_.empty());
 
             std::chrono::milliseconds sleep_duration{ 500 };
             std::this_thread::sleep_for(sleep_duration);
         }
             spdlog::debug("\n"
-                "m_shutdown                           : {}\n"
-                "mp_image_transport working           : {}\n"
-                "m_transport_input_queue shutdown     : {}\n"
-                "m_transport_input_queue empty        : {}\n"
-                "mp_tracker working                   : {}\n"
-                "m_transport_output_queue shutdown    : {}\n"
-                "m_transport_output_queue empty       : {}\n"
-                "mp_mapper working                    : {}\n"
-                "m_tracker_output_queue shutdown      : {}\n"
-                "m_tracker_output_queue empty         : {}",
-                m_shutdown,
-                mp_image_transport->is_working(),
-                m_transport_input_queue.isShutdown(),
-                m_transport_input_queue.empty(),
-                mp_tracker->is_working(),
-                m_transport_output_queue.isShutdown(),
-                m_transport_output_queue.empty(),
-                mp_mapper->is_working(),
-                m_tracker_output_queue.isShutdown(),
-                m_tracker_output_queue.empty());
+                "shutdown_                           : {}\n"
+                "image_transport_ working            : {}\n"
+                "transport_input_queue_ shutdown     : {}\n"
+                "transport_input_queue_ empty        : {}\n"
+                "tracker_ working                    : {}\n"
+                "transport_output_queue_ shutdown    : {}\n"
+                "transport_output_queue_ empty       : {}\n"
+                "mapper_ working                     : {}\n"
+                "tracker_output_queue_ shutdown      : {}\n"
+                "tracker_output_queue_ empty         : {}",
+                shutdown_,
+                image_transport_->isWorking(),
+                transport_input_queue_.isShutdown(),
+                transport_input_queue_.empty(),
+                tracker_->isWorking(),
+                transport_output_queue_.isShutdown(),
+                transport_output_queue_.empty(),
+                mapper_->isWorking(),
+                tracker_output_queue_.isShutdown(),
+                tracker_output_queue_.empty());
         // clang-format on
 
-        if (!m_shutdown)
+        if (!shutdown_)
         {
             shutdown();
-            m_shutdown = true;
+            shutdown_ = true;
         }
         return true;
     }
@@ -153,12 +162,12 @@ namespace oslam
     void Controller::run()
     {
         // Start thread for each component
-        auto handle_dataset         = std::async(std::launch::async, &oslam::DataReader::run, mp_data_reader);
-        auto handle_image_transport = std::async(std::launch::async, &oslam::ImageTransporter::run, mp_image_transport);
-        auto handle_tracker         = std::async(std::launch::async, &oslam::Tracker::run, mp_tracker);
-        auto handle_mapper          = std::async(std::launch::async, &oslam::Mapper::run, mp_mapper);
-        auto handle_renderer        = std::async(std::launch::async, &oslam::Renderer::run, mp_renderer);
-        auto handle_shutdown        = std::async(std::launch::async, &oslam::Controller::shutdown_when_complete, this);
+        auto handle_dataset         = std::async(std::launch::async, &oslam::DataReader::run, data_reader_);
+        auto handle_image_transport = std::async(std::launch::async, &oslam::ImageTransporter::run, image_transport_);
+        auto handle_tracker         = std::async(std::launch::async, &oslam::Tracker::run, tracker_);
+        auto handle_mapper          = std::async(std::launch::async, &oslam::Mapper::run, mapper_);
+        auto handle_renderer        = std::async(std::launch::async, &oslam::Renderer::run, renderer_);
+        auto handle_shutdown        = std::async(std::launch::async, &oslam::Controller::shutdownWhenComplete, this);
 
         handle_shutdown.get();
         spdlog::info("Shutdown successful: {}", handle_shutdown.get());

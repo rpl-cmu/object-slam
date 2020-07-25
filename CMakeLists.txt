@@ -6,7 +6,6 @@ include(cmake/StandardProjectSettings.cmake)
 add_library(project_options INTERFACE)
 target_compile_features(project_options INTERFACE cxx_std_17)
 
-
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
 add_library(project_warnings INTERFACE)
 
@@ -29,9 +28,14 @@ option(BUILD_SHARED_LIBS "Enable compilation of shared libraries" OFF)
 option(ENABLE_TESTING "Enable Test Builds" OFF)
 option(ENABLE_PCH "Enable Precompiled Headers" OFF)
 option(WITH_OPENMP "Use OpenMP" ON)
+option(WITH_DEBUG_VIS "With Visualization for debugging" ON)
 
 if (ENABLE_PCH)
   target_precompile_headers(project_options INTERFACE <vector> <string> <map> <utility>)
+endif()
+
+if (WITH_DEBUG_VIS)
+    target_compile_definitions(project_options INTERFACE OSLAM_DEBUG_VIS)
 endif()
 
 # Set up some extra Conan dependencies based on our needs

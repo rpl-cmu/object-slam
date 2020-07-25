@@ -1,5 +1,5 @@
 /******************************************************************************
- * File:             tracker_payload.h
+ * File:             trackepayload.h
  *
  * Author:           Akash Sharma
  * Created:          05/16/20
@@ -25,25 +25,25 @@ namespace oslam
     {
        public:
         OSLAM_POINTER_TYPEDEFS(TrackerInput);
-        TrackerInput(
-            const Timestamp timestamp,
-            const Frame& r_frame,
-            const cv::Mat& r_global_color_map,
-            const cv::Mat& r_global_vertices,
-            const cv::Mat& r_global_normals)
+        TrackerInput(const Timestamp timestamp,
+                     const Frame& frame,
+                     const cv::Mat& model_color_map,
+                     const cv::Mat& model_vertices,
+                     const cv::Mat& model_normals)
             : PipelinePayload(timestamp),
-              m_frame(r_frame),
-              m_global_color_map(r_global_color_map),
-              m_global_vertices(r_global_vertices),
-              m_global_normals(r_global_normals)
+              frame_(frame),
+              model_color_map_(model_color_map),
+              model_vertices_(model_vertices),
+              model_normals_(model_normals)
         {
         }
         ~TrackerInput() = default;
 
-        const Frame m_frame;
-        const cv::Mat m_global_color_map;
-        const cv::Mat m_global_vertices;
-        const cv::Mat m_global_normals;
+       public:
+        const Frame frame_;
+        const cv::Mat model_color_map_;
+        const cv::Mat model_vertices_;
+        const cv::Mat model_normals_;
     };
 
     enum class TrackerStatus
@@ -58,25 +58,25 @@ namespace oslam
        public:
         OSLAM_POINTER_TYPEDEFS(TrackerOutput);
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-        TrackerOutput(
-            const Timestamp timestamp,
-            const TrackerStatus& r_tracker_status,
-            const Frame& r_frame,
-            const Eigen::Matrix4d& r_relative_camera_pose,
-            const Eigen::Matrix6d& r_information_matrix)
+        TrackerOutput(const Timestamp timestamp,
+                      const TrackerStatus& tracker_status,
+                      const Frame& frame,
+                      const Eigen::Matrix4d& relative_camera_pose,
+                      const Eigen::Matrix6d& information_matrix)
             : PipelinePayload(timestamp),
-            m_tracker_status(r_tracker_status),
-            m_frame(r_frame),
-            m_relative_camera_pose(r_relative_camera_pose),
-            m_information_matrix(r_information_matrix)
+              tracker_status_(tracker_status),
+              frame_(frame),
+              relative_camera_pose_(relative_camera_pose),
+              information_matrix_(information_matrix)
         {
         }
         ~TrackerOutput() = default;
+
        public:
-        const TrackerStatus m_tracker_status;
-        const Frame m_frame;
-        const Eigen::Matrix4d m_relative_camera_pose;
-        const Eigen::Matrix6d m_information_matrix;
+        const TrackerStatus tracker_status_;
+        const Frame frame_;
+        const Eigen::Matrix4d relative_camera_pose_;
+        const Eigen::Matrix6d information_matrix_;
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_TRACKER_PAYLOAD_H */

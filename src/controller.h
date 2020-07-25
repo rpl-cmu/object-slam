@@ -9,61 +9,58 @@
 #define OSLAM_CONTROLLER_H
 
 #include <Open3D/Open3D.h>
-#include <docopt/docopt.h>
 #include <spdlog/spdlog.h>
 
 #include <memory>
 #include <zmq.hpp>
 
-#include "utils/macros.h"
-
 #include "data_provider.h"
 #include "data_reader.h"
 #include "image_transport.h"
 #include "map.h"
-#include "tracker.h"
 #include "mapper.h"
 #include "renderer.h"
+#include "tracker.h"
+#include "utils/macros.h"
 
 namespace oslam
 {
-  class Controller
-  {
-   public:
-    OSLAM_DELETE_COPY_CONSTRUCTORS(Controller);
-    explicit Controller(const std::map<std::string, docopt::value> &r_args);
-    virtual ~Controller() = default;
+    /*! \class Controller
+     *  \brief Creates and manages all the submodules in the SLAM System
+     */
+    class Controller
+    {
+       public:
+        OSLAM_DELETE_COPY_CONSTRUCTORS(Controller);
 
-    int start();
+        explicit Controller(const std::string& dataset_path);
+        virtual ~Controller() = default;
 
-   private:
-    bool setup();
-    void run();
-    bool shutdown_when_complete();
-    void shutdown();
+        bool start();
 
-    bool m_visualize;
-    bool m_debug;
+       private:
+        bool setup();
+        void run();
+        bool shutdownWhenComplete();
+        void shutdown();
 
-    std::atomic_bool m_shutdown = { false };
-    std::string m_dataset_path;
+        std::string dataset_path_;
+        std::atomic_bool shutdown_ = { false };
 
-    std::shared_ptr<GlobalMap> mp_global_map;
+        std::shared_ptr<Map> map_;
 
-    DataReader::Ptr mp_data_reader;
-    DataProvider::Ptr mp_data_provider;
-    ImageTransporter::Ptr mp_image_transport;
-    Tracker::Ptr mp_tracker;
-    Mapper::Ptr mp_mapper;
-    Renderer::Ptr mp_renderer;
+        DataReader::Ptr data_reader_;
+        DataProvider::Ptr data_provider_;
+        ImageTransporter::Ptr image_transport_;
+        Tracker::Ptr tracker_;
+        Mapper::Ptr mapper_;
+        Renderer::Ptr renderer_;
 
-    ImageTransporter::InputQueue m_transport_input_queue;
-    ImageTransporter::OutputQueue m_transport_output_queue;
-
-    Tracker::OutputQueue m_tracker_output_queue;
-
-    Renderer::InputQueue m_renderer_input_queue;
-    Renderer::OutputQueue m_renderer_output_queue;
-  };
+        ImageTransporter::InputQueue transport_input_queue_;
+        ImageTransporter::OutputQueue transport_output_queue_;
+        Tracker::OutputQueue tracker_output_queue_;
+        Renderer::InputQueue renderer_input_queue_;
+        Renderer::OutputQueue renderer_output_queue_;
+    };
 }  // namespace oslam
 #endif /* ifndef OSLAM_CONTROLLER_H */

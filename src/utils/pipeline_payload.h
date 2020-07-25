@@ -20,11 +20,11 @@ struct PipelinePayload
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
     explicit PipelinePayload(const Timestamp &timestamp)
-    : m_timestamp(timestamp) {};
+    : timestamp_(timestamp) {};
     virtual ~PipelinePayload() = default;
 
     // Untouchable timestamp of the payload.
-    const Timestamp m_timestamp;
+    const Timestamp timestamp_;
 };
 
 /**

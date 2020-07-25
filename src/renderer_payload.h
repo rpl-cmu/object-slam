@@ -33,18 +33,18 @@ namespace oslam
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
         RendererInput(
             Timestamp timestamp,
-            const MapperStatus& r_mapper_status,
-            const Frame& r_frame,
-            const Eigen::Matrix4d& r_camera_pose)
-            : PipelinePayload(timestamp), m_mapper_status(r_mapper_status), m_frame(r_frame), m_camera_pose(r_camera_pose)
+            const MapperStatus& mapper_status,
+            const Frame& frame,
+            const Eigen::Matrix4d& camera_pose)
+            : PipelinePayload(timestamp), mapper_status_(mapper_status), frame_(frame), camera_pose_(camera_pose)
         {
         }
 
         ~RendererInput() = default;
 
-        const MapperStatus m_mapper_status;
-        const Frame m_frame;
-        const Eigen::Matrix4d m_camera_pose;
+        const MapperStatus mapper_status_;
+        const Frame frame_;
+        const Eigen::Matrix4d camera_pose_;
     };
 
     struct RendererOutput : public PipelinePayload
@@ -52,16 +52,16 @@ namespace oslam
        public:
         OSLAM_POINTER_TYPEDEFS(RendererOutput);
 
-        RendererOutput(Timestamp timestamp, const cv::Mat& r_colors, const cv::Mat& r_vertices, const cv::Mat& r_normals)
-            : PipelinePayload(timestamp), m_colors(r_colors), m_vertices(r_vertices), m_normals(r_normals)
+        RendererOutput(Timestamp timestamp, const cv::Mat& colors, const cv::Mat& vertices, const cv::Mat& normals)
+            : PipelinePayload(timestamp), colors_(colors), vertices_(vertices), normals_(normals)
         {
         }
 
         ~RendererOutput() = default;
 
-        const cv::Mat m_colors;
-        const cv::Mat m_vertices;
-        const cv::Mat m_normals;
+        const cv::Mat colors_;
+        const cv::Mat vertices_;
+        const cv::Mat normals_;
     };
 
 }  // namespace oslam

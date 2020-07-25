@@ -8,6 +8,8 @@
 #ifndef OSLAM_MAPPER_H
 #define OSLAM_MAPPER_H
 
+#include <gtsam/nonlinear/NonlinearFactorGraph.h>
+
 #include <Eigen/Eigen>
 #include <limits>
 #include <vector>
@@ -21,9 +23,9 @@
 namespace oslam
 {
     /*! \class mapper
-     *  \brief Brief class description
-     *
-     *  Detailed description
+     *  \brief Incrementally builds the map from the incoming frames, segmentation information
+     *  and the tracked camera pose.
+     *  Also creates a posegraph with the object volumes, which is then optimized regularly
      */
     class Mapper : public MISOPipelineModule<MapperInput, RendererInput>
     {
@@ -32,36 +34,54 @@ namespace oslam
         OSLAM_DELETE_COPY_CONSTRUCTORS(Mapper);
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-        using MISO = MISOPipelineModule<MapperInput, RendererInput>;
-        using TrackerOutputQueue = ThreadsafeQueue<TrackerOutput::UniquePtr>;
+        using MISO                 = MISOPipelineModule<MapperInput, RendererInput>;
+        using TrackerOutputQueue   = ThreadsafeQueue<TrackerOutput::UniquePtr>;
         using TransportOutputQueue = ThreadsafeQueue<ImageTransportOutput::UniquePtr>;
 
-        Mapper(
-            TrackerOutputQueue* p_tracker_output_queue,
-            TransportOutputQueue* p_transport_output_queue,
-            OutputQueue* p_output_queue);
+        Mapper(Map::Ptr map,
+               TrackerOutputQueue* tracker_output_queue,
+               TransportOutputQueue* transport_output_queue,
+               OutputQueue* output_queue);
 
         virtual ~Mapper() = default;
 
-        virtual OutputUniquePtr run_once(InputUniquePtr p_input) override;
+        virtual OutputUniquePtr runOnce(InputUniquePtr input) override;
 
-        virtual bool has_work() const override { return (m_curr_timestamp < m_max_timestamp); }
-        virtual void set_max_timestamp(Timestamp timestamp) { m_max_timestamp = timestamp; }
+        virtual bool hasWork() const override { return (curr_timestamp_ < max_timestamp_); }
+        virtual void setMaxTimestamp(Timestamp timestamp) { max_timestamp_ = timestamp; }
 
        private:
-        virtual InputUniquePtr get_input_packet() override;
+        constexpr static double SCORE_THRESHOLD  = 0.5;
+        constexpr static int MASK_AREA_THRESHOLD = 2500;
 
-        TrackerOutputQueue* mp_tracker_output_queue;
-        TransportOutputQueue* mp_transport_output_queue;
-        ImageTransportOutput::UniquePtr mp_prev_transport_output;
+        virtual InputUniquePtr getInputPacket() override;
 
-        GlobalMap& mr_global_map;
+        TSDFObject::Ptr createBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose);
+        TSDFObject::Ptr createObject(const Frame& frame,
+                                     const InstanceImage& instance_image,
+                                     const Eigen::Matrix4d& camera_pose);
 
-        Timestamp m_curr_timestamp = 0;
-        Timestamp m_prev_maskframe_timestamp = 0;
-        Timestamp m_max_timestamp = std::numeric_limits<Timestamp>::max();
+        void raycastMapObjects(std::vector<std::pair<ObjectId, cv::Mat>>& object_raycasts,
+                               const Frame& frame,
+                               const Eigen::Matrix4d& camera_pose);
 
-        std::vector<Eigen::Matrix4d, Eigen::aligned_allocator<Eigen::Matrix4d>> mv_T_camera_2_world;
+        std::pair<bool, ObjectId> associateObjects(const InstanceImage& instance_image,
+                                                   const std::vector<std::pair<ObjectId, cv::Mat>>& object_raycasts);
+        Map::Ptr map_;
+        ObjectId active_bg_id_;
+
+        TrackerOutputQueue* tracker_output_queue_;
+        TransportOutputQueue* transport_output_queue_;
+        ImageTransportOutput::UniquePtr prev_transport_output_;
+
+        Timestamp curr_timestamp_           = 0;
+        Timestamp prev_maskframe_timestamp_ = 0;
+        Timestamp max_timestamp_            = std::numeric_limits<Timestamp>::max();
+
+        std::vector<Eigen::Matrix4d, Eigen::aligned_allocator<Eigen::Matrix4d>>
+            T_camera_to_world_;  //!< Camera trajectory pose w.r.t first submap
+
+        gtsam::NonlinearFactorGraph object_pose_graph_;
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_MAPPER_H */

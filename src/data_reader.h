@@ -16,7 +16,6 @@
 #include <vector>
 
 #include "frame.h"
-#include "utils/thread_safe_queue.h"
 
 namespace oslam
 {
@@ -40,61 +39,46 @@ namespace oslam
         using FrameCallback    = std::function<void(Frame::Ptr)>;
         using ShutdownCallback = std::function<void(Timestamp)>;
 
-        explicit DataReader(const std::string &r_root_dir);
+        explicit DataReader(const std::string &root_dir);
         virtual ~DataReader() = default;
 
-        /*! \brief Runs through the dataset folder to read all files
-         *  - unless explicitly stopped
-         *  - all the files have been read
-         */
+        //! \brief Runs through the dataset folder to read all files
+        //!  - unless explicitly stopped
+        //!  - all the files have been read
+        //!
         bool run();
 
         //! \brief Shutdown the data_reader on demand
         void shutdown();
 
         //! \brief Register callbacks for output queues and shutdown notification
-        inline void register_output_callback(const FrameCallback &r_callback)
+        inline void registerOutputCallback(const FrameCallback &r_callback) { output_callbacks_.emplace_back(r_callback); }
+        inline void registerShutdownCallback(const ShutdownCallback &r_callback)
         {
-            m_output_callbacks.emplace_back(r_callback);
-        }
-        inline void register_shutdown_callback(const ShutdownCallback &r_callback)
-        {
-            m_shutdown_callbacks.emplace_back(r_callback);
+            shutdown_callbacks_.emplace_back(r_callback);
         }
 
        private:
-        bool parse_dataset();
-        bool read_frame();
+        bool parseDataset();
+        bool readFrame();
 
-        //! Root directory of the dataset folder
-        fs::path m_root_dir;
-
-        //! Number of images color/depth in the dataset folder
-        std::size_t m_size = { 0 };
-        //! Current index of files being read
-        Timestamp m_current_index = 0;
-
-        //! is dataset parsed
-        bool m_dataset_parsed = { false };
+        fs::path root_dir_;                  //!< Root directory of the dataset folder
+        std::size_t size_          = 0;      //!< Number of images color/depth in the dataset folder
+        Timestamp curr_idx_        = 0;      //!< Current index of files being read
+        bool dataset_parsed_       = false;  //!< is dataset parsed
+        std::atomic_bool shutdown_ = false;  //!< Shutdown switch
 
         //! Vector of filepaths in the dataset folder
-        std::vector<fs::path> m_rgb_files;
-        std::vector<fs::path> m_depth_files;
-        std::vector<fs::path> m_pose_files;
-        std::vector<fs::path> m_mask_files;
-        std::vector<fs::path> m_label_files;
+        std::vector<fs::path> rgb_files_;
+        std::vector<fs::path> depth_files_;
+        std::vector<fs::path> pose_files_;
+        std::vector<fs::path> mask_files_;
+        std::vector<fs::path> label_files_;
 
-        //! Camera intrinsics
-        open3d::camera::PinholeCameraIntrinsic m_intrinsic;
+        open3d::camera::PinholeCameraIntrinsic intrinsic_;  //!< Camera intrinsics
 
-        //! Vector of callbacks called when data available
-        std::vector<FrameCallback> m_output_callbacks;
-
-        //! Vector of callbacks to forward max frames in dataset when shutdown
-        std::vector<ShutdownCallback> m_shutdown_callbacks;
-
-        //! Shutdown switch
-        std::atomic_bool m_shutdown = { false };
+        std::vector<FrameCallback> output_callbacks_;       //!< Called when data available
+        std::vector<ShutdownCallback> shutdown_callbacks_;  //!< Forwards max num frames in dataset when shutdown
     };
 
 } /* namespace oslam */

@@ -127,7 +127,7 @@ template<class T> class SimpleQueueSynchronizer : public QueueSynchronizerBase<T
                 return false;
             }
             if (*pipeline_payload) {
-                payload_timestamp = (*pipeline_payload)->m_timestamp;
+                payload_timestamp = (*pipeline_payload)->timestamp_;
                 // Call any user defined callback at this point (should be fast!!).
                 if (callback) (*callback)(*pipeline_payload);
             } else {

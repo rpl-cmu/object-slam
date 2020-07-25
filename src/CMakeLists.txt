@@ -29,7 +29,7 @@ target_include_directories(
 
 target_link_libraries(
   reconstruct PRIVATE project_options project_warnings
-  CONAN_PKG::docopt.cpp
+  CONAN_PKG::CLI11
   CONAN_PKG::fmt
   CONAN_PKG::spdlog
   CONAN_PKG::cppzmq
@@ -43,6 +43,7 @@ target_link_libraries(
   opencv_rgbd
   ${CMAKE_DL_LIBS}
   proto
+  gtsam
 )
 
 #

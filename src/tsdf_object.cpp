@@ -23,97 +23,108 @@
 
 namespace oslam
 {
-    TSDFObject::TSDFObject(const Frame &r_frame, const InstanceImage &r_instance_image, const Eigen::Matrix4d &r_camera_pose,
+    TSDFObject::TSDFObject(const ObjectId &id,
+                           const Frame &frame,
+                           const InstanceImage &instance_image,
+                           const Eigen::Matrix4d &camera_pose,
                            int resolution)
-        : m_resolution(resolution),
-          m_instance_image(r_instance_image),
-          m_pose(r_camera_pose),
-          m_intrinsic(r_frame.m_intrinsic),
-          mc_intrinsic(m_intrinsic)
+        : id_(id),
+          resolution_(resolution),
+          instance_image_(instance_image),
+          pose_(camera_pose),
+          intrinsic_(frame.intrinsic_),
+          intrinsic_cuda_(intrinsic_)
     {
-        auto color        = r_frame.m_color;
-        auto object_depth = r_frame.m_depth.clone();
-        object_depth.setTo(0, ~r_instance_image.m_bbox_mask);
+        auto color        = frame.color_;
+        auto object_depth = frame.depth_.clone();
+        object_depth.setTo(0, ~instance_image_.bbox_mask_);
 
-        //! Construct Object RGBD to obtain center and estimate object size
+        // Construct Object RGBD to obtain center and estimate object size
         open3d::cuda::RGBDImageCuda object_rgbd;
         object_rgbd.Upload(object_depth, color);
-        open3d::cuda::PointCloudCuda object_point_cloud(open3d::cuda::VertexWithColor, r_frame.m_width * r_frame.m_height);
-        object_point_cloud.Build(object_rgbd, mc_intrinsic);
+        open3d::cuda::PointCloudCuda object_point_cloud(open3d::cuda::VertexWithColor, frame.width_ * frame.height_);
+        object_point_cloud.Build(object_rgbd, intrinsic_cuda_);
 
-        //! Translate the object pose to point cloud center
-        //! T_wo = T_wc * T_co
-        m_pose.block<3, 1>(0, 3) = object_point_cloud.GetCenter();
-        m_pose = r_camera_pose * m_pose;
+        // Translate the object pose to point cloud center
+        // T_wo = T_wc * T_co
+        pose_.block<3, 1>(0, 3) = object_point_cloud.GetCenter();
+        pose_                   = camera_pose * pose_;
 
-        //! Appropriately size the voxel_length of volume for appropriate resolution of the object
+        // Appropriately size the voxel_length of volume for appropriate resolution of the object
         Eigen::Vector3d object_max = object_point_cloud.GetMaxBound();
         Eigen::Vector3d object_min = object_point_cloud.GetMinBound();
-        double voxel_length        = 0.9 * (object_max - object_min).maxCoeff() / resolution;
+        float voxel_length        = 0.9f * float((object_max - object_min).maxCoeff() / resolution);
 
-        spdlog::debug("Volume pose\n {}", m_pose);
-        spdlog::debug("Voxel length {}", voxel_length);
+        spdlog::debug("Volume pose\n {}", pose_);
+        spdlog::debug("Voxel length: {}", voxel_length);
 
-        open3d::cuda::TransformCuda c_object_pose;
-        c_object_pose.FromEigen(r_camera_pose);
+        open3d::cuda::TransformCuda object_pose_cuda;
+        object_pose_cuda.FromEigen(camera_pose);
 
-        //! Subvolume resolution is always 16, truncation distance = 4 * voxel length
-        //! Allocate lower memory since we will create multiple TSDF objects
-        if(r_instance_image.m_label == 0)
-            mpc_object_volume.emplace(M_SUBVOLUME_RES, voxel_length, 5 * voxel_length, c_object_pose, 2000, 8000);
-        else
-            mpc_object_volume.emplace(M_SUBVOLUME_RES, voxel_length, 5 * voxel_length, c_object_pose, 2000, 4000);
+        // truncation distance = 4 * voxel length
+        // Allocate lower memory since we will create multiple TSDF objects
+        if (instance_image.label_ == 0)
+        {
+            volume_ = cuda::ScalableTSDFVolumeCuda(M_SUBVOLUME_RES, voxel_length, 5 * voxel_length, object_pose_cuda, 2000, 8000);
+            spdlog::debug("Created new background instance");
+            return;
+        }
+        volume_ = cuda::ScalableTSDFVolumeCuda(M_SUBVOLUME_RES, voxel_length, 5 * voxel_length, object_pose_cuda, 2000, 4000);
+        spdlog::debug("Created new object instance");
     }
 
-    void TSDFObject::integrate(const Frame &r_frame, const InstanceImage &r_instance_image,
-                               const Eigen::Matrix4d &r_camera_pose)
+    void TSDFObject::integrate(const Frame &frame, const InstanceImage &instance_image, const Eigen::Matrix4d &camera_pose)
     {
-        std::scoped_lock<std::mutex> integration_lock(m_object_mutex);
+        std::scoped_lock<std::mutex> integration_lock(object_mutex_);
 
-        auto color        = r_frame.m_color;
-        auto object_depth = r_frame.m_depth.clone();  // TODO: How to avoid cloning here?
-        object_depth.setTo(0, ~r_instance_image.m_bbox_mask);
+        auto color        = frame.color_;
+        auto object_depth = frame.depth_.clone();
+        object_depth.setTo(0, ~instance_image.bbox_mask_);
 
+        // For visualization/debug only
+#ifdef OSLAM_DEBUG_VIS
         cv::Mat cvt8;
         cv::convertScaleAbs(object_depth, cvt8, 0.25);
+        cv::imshow("Integrating Depth", cvt8);
+#endif
 
-        open3d::cuda::RGBDImageCuda c_object_rgbd;
-        c_object_rgbd.Upload(object_depth, color);
+        open3d::cuda::RGBDImageCuda object_rgbd_cuda;
+        object_rgbd_cuda.Upload(object_depth, color);
 
-        /* open3d::cuda::PointCloudCuda object_point_cloud(open3d::cuda::VertexWithColor, r_frame.m_width * r_frame.m_height); */
-        /* object_point_cloud.Build(c_object_rgbd, mc_intrinsic); */
+        open3d::cuda::TransformCuda camera_to_world_cuda;
+        camera_to_world_cuda.FromEigen(camera_pose);
 
-        /* auto pcd = object_point_cloud.Download(); */
+        open3d::cuda::ImageCuda<uchar, 1> mask_cuda;
+        mask_cuda.Upload(instance_image.maskb_);
 
-        /* open3d::visualization::DrawGeometries({ pcd }, "Object point cloud"); */
+        volume_.Integrate(object_rgbd_cuda, intrinsic_cuda_, camera_to_world_cuda, mask_cuda);
 
-
-        open3d::cuda::TransformCuda c_camera_2_world;
-        c_camera_2_world.FromEigen(r_camera_pose);
-
-        open3d::cuda::ImageCuda<uchar, 1> c_mask;
-        c_mask.Upload(r_instance_image.m_maskb);
-
-        mpc_object_volume->Integrate(c_object_rgbd, mc_intrinsic, c_camera_2_world, c_mask);
-        if(r_frame.m_timestamp % 100 == 0)
+#ifdef OSLAM_DEBUG_VIS
+        if (frame.timestamp_ % 100 == 0)
         {
-            mpc_object_volume->GetAllSubvolumes();
-            open3d::cuda::ScalableMeshVolumeCuda mesher(open3d::cuda::VertexWithNormalAndColor, 16,
-                                                        mpc_object_volume->active_subvolume_entry_array_.size(), 2000000, 4000000);
-            mesher.MarchingCubes(*mpc_object_volume);
+            volume_.GetAllSubvolumes();
+            open3d::cuda::ScalableMeshVolumeCuda mesher(open3d::cuda::VertexWithColor,
+                                                        16,
+                                                        volume_.active_subvolume_entry_array_.size(),
+                                                        2000000,
+                                                        4000000);
+            mesher.MarchingCubes(volume_);
             auto mesh = mesher.mesh().Download();
             open3d::visualization::DrawGeometries({ mesh }, "Mesh after integration");
             mesher.Release();
         }
+#endif
     }
 
-    void TSDFObject::raycast(open3d::cuda::ImageCuda<float, 3> &vertex, open3d::cuda::ImageCuda<float, 3> &normal,
-                             open3d::cuda::ImageCuda<uchar, 3> &color, const Eigen::Matrix4d &r_camera_pose)
+    void TSDFObject::raycast(open3d::cuda::ImageCuda<float, 3> &vertex,
+                             open3d::cuda::ImageCuda<float, 3> &normal,
+                             open3d::cuda::ImageCuda<uchar, 3> &color,
+                             const Eigen::Matrix4d &camera_pose)
     {
-        //! TODO: Need to translate the poses
-        open3d::cuda::TransformCuda c_camera_2_object;
-        c_camera_2_object.FromEigen(r_camera_pose);
-        mpc_object_volume->RayCasting(vertex, normal, color, mc_intrinsic, c_camera_2_object);
+        open3d::cuda::TransformCuda camera_to_object_cuda;
+        //! TODO: Incorrect?
+        camera_to_object_cuda.FromEigen(camera_pose);
+        volume_.RayCasting(vertex, normal, color, intrinsic_cuda_, camera_to_object_cuda);
     }
 
 }  // namespace oslam
