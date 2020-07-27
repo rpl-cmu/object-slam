@@ -40,12 +40,18 @@ namespace oslam
         virtual ~Map() { id_to_object_.clear(); }
 
         bool addObject(TSDFObject::Ptr object, bool is_active_bg = false);
+        bool removeObject(const ObjectId& id);
+
         TSDFObject::Ptr getObject(const ObjectId &id);
         TSDFObject::Ptr getBackground();
+
 
         //! Map is a hashtable of different objects
         IdToObjectMap id_to_object_;
         ObjectId active_bg_id_;
+
+        private:
+        std::mutex mutex_;
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_MAP_H */

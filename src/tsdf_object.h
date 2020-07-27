@@ -58,8 +58,13 @@ namespace oslam
         [[nodiscard]] Eigen::Matrix4d getPose() const { return pose_; }
         [[nodiscard]] cuda::PinholeCameraIntrinsicCuda getIntrinsicCuda() const { return intrinsic_cuda_; }
 
+        double getExistExpectation() const { return existence_ / (existence_ + non_existence_); }
+
         const ObjectId id_;        //!< Const public object ID Cannot be modified
         std::hash<ObjectId> hash;  //!< Functor for obtaining hash from object ID
+
+        std::atomic_int existence_     = 1;
+        std::atomic_int non_existence_ = 1;
 
        private:
         constexpr static int M_SUBVOLUME_RES = 16;  //!< Each subvolume unit has 16^3 voxels
@@ -72,10 +77,7 @@ namespace oslam
 
         open3d::cuda::ScalableTSDFVolumeCuda volume_;
 
-        int existence_     = 1;
-        int non_existence_ = 1;
-
-        std::mutex object_mutex_;  //!< Protection against integration/raycasting from multiple threads
+        std::mutex mutex_;  //!< Protection against integration/raycasting from multiple threads
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_OBJECT_H */

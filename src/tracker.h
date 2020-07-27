@@ -41,12 +41,12 @@ namespace oslam
         using MISO                = MISOPipelineModule<TrackerInput, TrackerOutput>;
         using RendererOutputQueue = ThreadsafeQueue<RendererOutput::UniquePtr>;
 
-        Tracker(RendererOutputQueue* tracker_input_queue, OutputQueue* tracker_output_queue);
+        Tracker(RendererOutputQueue* renderer_output_queue, OutputQueue* output_queue);
         virtual ~Tracker() = default;
 
         void fillFrameQueue(Frame::Ptr p_frame) { frame_queue_.push(std::make_unique<Frame>(*p_frame)); }
 
-        virtual OutputUniquePtr runOnce(InputUniquePtr p_input) override;
+        virtual OutputUniquePtr runOnce(InputUniquePtr input) override;
 
         virtual bool hasWork() const override { return (curr_timestamp_ < max_timestamp_); }
         virtual void setMaxTimestamp(Timestamp timestamp) { max_timestamp_ = timestamp; }
@@ -58,12 +58,12 @@ namespace oslam
 
         //! Input Queues which are to be synchronised
         ThreadsafeQueue<Frame::UniquePtr> frame_queue_;
-        RendererOutputQueue* renderer_output_queue_;
+        RendererOutputQueue *renderer_output_queue_;
 
         Timestamp curr_timestamp_ = 0;
         Timestamp max_timestamp_  = std::numeric_limits<Timestamp>::max();
 
-        Eigen::Matrix4d prev_camera_pose; //!< T_camera_to_world_ at prev timestep
+        Eigen::Matrix4d prev_camera_pose;  //!< T_camera_to_world_ at prev timestep
 
         cuda::PinholeCameraIntrinsicCuda intrinsic_cuda_;
         cuda::ImageCuda<ushort, 1> frame_raw_depth_cuda_;

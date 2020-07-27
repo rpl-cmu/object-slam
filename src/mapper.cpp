@@ -16,6 +16,7 @@
 #include <memory>
 #include <opencv2/core.hpp>
 #include <opencv2/rgbd/depth.hpp>
+#include <utility>
 
 #include "instance_image.h"
 #include "utils/utils.h"
@@ -166,19 +167,20 @@ namespace oslam
                 auto T_maskcamera_to_world             = T_camera_to_world_.at(prev_maskframe_timestamp_ - 1);
                 auto T_camera_to_world                 = T_camera_to_world_.back();
                 Eigen::Matrix4d T_maskcamera_to_camera = T_camera_to_world.inverse() * T_maskcamera_to_world;
-                unsigned int i                         = 0;
 
                 cuda::TransformCuda T_maskcamera_to_camera_cuda;
                 T_maskcamera_to_camera_cuda.FromEigen(T_maskcamera_to_camera);
                 cuda::PinholeCameraIntrinsicCuda intrinsic_cuda(frame.intrinsic_);
 
+                InstanceImages frame_instance_images;
+                frame_instance_images.reserve(instance_images.size());
+                std::vector<bool> frame_instance_matches(instance_images.size(), false);
                 for (auto& instance_image : instance_images)
                 {
                     //! Skip for background object
                     if (instance_image.label_ == 0)
                         continue;
 
-                    spdlog::debug("Processing {}th instance image in payload: {}", i, curr_timestamp_);
                     //! Project the mask from maskframe to current frame
                     cuda::ImageCuda<uchar, 1> src_mask;
                     src_mask.Upload(instance_image.maskb_);
@@ -196,48 +198,85 @@ namespace oslam
                         transform_project_bbox(instance_image.bbox_, depthf, frame.intrinsic_, T_maskcamera_to_camera);
 
 #ifdef OSLAM_DEBUG_VIS
-                    cv::imshow("Input instance image mask", instance_image.maskb_);
-                    cv::imshow("Source projected mask", proj_mask);
+                    /* cv::imshow("Input instance image mask", instance_image.maskb_); */
+                    /* cv::imshow("Source projected mask", proj_mask); */
 #endif
                     InstanceImage proj_instance_image(proj_mask, proj_bbox, instance_image.label_, instance_image.score_);
+                    frame_instance_images.push_back(proj_instance_image);
+                }
 
-                    bool matched = false;
-                    ObjectId matched_id;
-                    std::tie(matched, matched_id) = associateObjects(proj_instance_image, object_raycasts);
+                for (const auto& object_pair : object_raycasts)
+                {
+                    ObjectId id                   = object_pair.first;
+                    const cv::Mat& object_raycast = object_pair.second;
+                    TSDFObject::Ptr object        = map_->getObject(id);
 
-                    if (matched)
+                    auto iter = associateObjects(object_raycast, frame_instance_images, frame_instance_matches);
+
+                    // Did not match
+                    if (iter == frame_instance_images.end())
                     {
-                        //! Integrate with object ID matched with
-                        TSDFObject::Ptr matched_object = map_->getObject(matched_id);
-                        matched_object->integrate(frame, proj_instance_image, T_camera_to_world_.back());
+                        //! Increment the non-existence count
+                        object->non_existence_++;
                     }
                     else
                     {
-                        //! Create new object instance
-                        auto object = createObject(frame, proj_instance_image, camera_pose);
+                        object->existence_++;
+                        object->integrate(frame, *iter, camera_pose);
+                    }
+                }
+
+                for (size_t i = 0; i < frame_instance_matches.size(); i++)
+                {
+                    if (frame_instance_matches.at(i) == false)
+                    {
+                        // Create new object instance
+                        auto object = createObject(frame, frame_instance_images.at(i), camera_pose);
                         if (!object)
                         {
                             spdlog::debug("Object creation failed!");
                             continue;
                         }
-
                         auto object_key = object->hash(object->id_);
                         auto bg_key     = active_bg->hash(active_bg->id_);
 
                         auto between_noise = noiseModel::Diagonal::Variances(Vector6::Constant(1e-3));
                         object_pose_graph_.emplace_shared<BetweenFactor<Pose3>>(
                             bg_key, object_key, Pose3(object->getPose()), between_noise);
+                        map_->addObject(object);
+                    }
+                }
 
 #ifdef OSLAM_DEBUG_VIS
-                        object_pose_graph_.print("Factor Graph:\n");
+                object_pose_graph_.print("Factor Graph:\n");
 #endif
-                    }
-                    i++;
-                }
-                mapper_status = MapperStatus::VALID;
             }
-            // TODO: Delete objects
+            mapper_status = MapperStatus::VALID;
         }
+
+        std::vector<ObjectId> to_delete_objects;
+        for (const auto& object_pair : map_->id_to_object_)
+        {
+            const ObjectId id           = object_pair.first;
+            TSDFObject::ConstPtr object = object_pair.second;
+
+            if(object->isBackground())
+                continue;
+
+            double existence_expect = object->getExistExpectation();
+            spdlog::debug("{} -> Existence expectation: {}", existence_expect);
+
+            if (existence_expect < 0.1)
+            {
+                to_delete_objects.push_back(id);
+            }
+        }
+
+        for (const auto& object_id : to_delete_objects)
+        {
+            map_->removeObject(object_id);
+        }
+
         return std::make_unique<RendererInput>(curr_timestamp_, mapper_status, frame, T_camera_to_world_.back());
     }
 
@@ -316,40 +355,44 @@ namespace oslam
         }
     }
 
-    std::pair<bool, ObjectId> Mapper::associateObjects(const InstanceImage& instance_image,
-                                                       const std::vector<std::pair<ObjectId, cv::Mat>>& object_raycasts)
+    InstanceImages::const_iterator Mapper::associateObjects(const cv::Mat& object_raycast,
+                                                      const InstanceImages& instance_images,
+                                                      std::vector<bool>& instance_matches)
     {
-        if (instance_image.score_ < SCORE_THRESHOLD)
-        {
-            spdlog::warn("Object label {} with score {} is below score threshold. Not added",
-                         instance_image.label_,
-                         instance_image.score_);
-            return std::make_pair(false, ObjectId());
-        }
-        for (const auto& pair : object_raycasts)
-        {
-            ObjectId id                   = pair.first;
-            const cv::Mat& object_raycast = pair.second;
+        cv::Mat gray, mask;
+        cv::cvtColor(object_raycast, gray, cv::COLOR_BGR2GRAY);
+        cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY);
 
-            cv::Mat gray, mask;
-            cv::cvtColor(object_raycast, gray, cv::COLOR_BGR2GRAY);
-            cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY);
+        InstanceImages::const_iterator iter = instance_images.begin();
+        for (; iter != instance_images.end(); ++iter)
+        {
+            if (iter->score_ < SCORE_THRESHOLD)
+            {
+                spdlog::warn(
+                    "InstanceImage {} with score {} is below score threshold. Not matched", iter->label_, iter->score_);
+                continue;
+            }
 
             cv::Mat intersection_mask, union_mask;
-            cv::bitwise_and(instance_image.maskb_, mask, intersection_mask);
-            cv::bitwise_or(instance_image.maskb_, mask, union_mask);
+            cv::bitwise_and(iter->maskb_, mask, intersection_mask);
+            cv::bitwise_or(iter->maskb_, mask, union_mask);
 
-            auto quality =
-                static_cast<float>(cv::countNonZero(intersection_mask)) / static_cast<float>(cv::countNonZero(union_mask));
-            spdlog::debug("Quality of the association: {}, Source label: {}, Target label: {}",
+            int union_val        = cv::countNonZero(union_mask);
+            int intersection_val = cv::countNonZero(intersection_mask);
+
+            auto quality = static_cast<float>(intersection_val) / static_cast<float>(union_val);
+            spdlog::debug("Quality of the association: {}, Target label: {}",
                           quality,
-                          instance_image.label_,
-                          id.label);
+                          iter->label_);
 
-            if (quality > 0.2f)
-                return std::make_pair(true, id);
+            size_t curr_idx = size_t(iter - instance_images.begin());
+            if (instance_matches.at(curr_idx) == false && quality > 0.2f && union_val > MASK_AREA_THRESHOLD)
+            {
+                instance_matches.at(curr_idx) = true;
+                return iter;
+            }
         }
-        return std::make_pair(false, ObjectId());
+        return instance_images.end();
     }
 
 }  // namespace oslam

@@ -65,8 +65,10 @@ namespace oslam
                                const Frame& frame,
                                const Eigen::Matrix4d& camera_pose);
 
-        std::pair<bool, ObjectId> associateObjects(const InstanceImage& instance_image,
-                                                   const std::vector<std::pair<ObjectId, cv::Mat>>& object_raycasts);
+        InstanceImages::const_iterator associateObjects(const cv::Mat& object_raycast,
+                                                  const InstanceImages& instance_images,
+                                                  std::vector<bool>& instance_matches);
+
         Map::Ptr map_;
         ObjectId active_bg_id_;
 

@@ -16,9 +16,9 @@ namespace oslam
 
     Renderer::OutputUniquePtr Renderer::runOnce(Renderer::InputUniquePtr input)
     {
-        curr_timestamp_                 = input->timestamp_;
-        RendererInput& renderer_payload = *input;
-        const Frame& frame              = renderer_payload.frame_;
+        curr_timestamp_                       = input->timestamp_;
+        const RendererInput& renderer_payload = *input;
+        const Frame& frame                    = renderer_payload.frame_;
 
         if (renderer_payload.mapper_status_ == MapperStatus::VALID)
         {
@@ -34,7 +34,7 @@ namespace oslam
             auto background = map_->getBackground();
             if (!background)
             {
-                spdlog::error("Background object not present for renderering");
+                spdlog::error("Background object not present for rendering");
                 return nullptr;
             }
             background->raycast(
@@ -48,11 +48,10 @@ namespace oslam
             cv::Mat normals   = model_normals_cuda_.DownloadMat();
 
 #ifdef OSLAM_DEBUG_VIS
-            cv::imshow("Color map", color_map);
-            cv::imshow("Source image", frame.color_);
-            cv::waitKey(1);
+            /* cv::imshow("Color map", color_map); */
+            /* cv::imshow("Source image", frame.color_); */
 #endif
-
+            spdlog::debug("Returning render output");
             return std::make_unique<RendererOutput>(curr_timestamp_ + 1, color_map, vertices, normals);
         }
         return nullptr;

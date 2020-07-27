@@ -6,12 +6,14 @@
  * Description:      main
  *****************************************************************************/
 #include <CLI/CLI.hpp>
+#include <spdlog/spdlog.h>
 
 #include "controller.h"
 
 int main(int argc, char *argv[])
 {
     CLI::App app{ "Object SLAM" };
+    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] %^[%L] %v%$");
 
     std::string dataset_path;
     app.add_option("dataset_path", dataset_path, "Path to the dataset")

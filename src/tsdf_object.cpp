@@ -75,7 +75,7 @@ namespace oslam
 
     void TSDFObject::integrate(const Frame &frame, const InstanceImage &instance_image, const Eigen::Matrix4d &camera_pose)
     {
-        std::scoped_lock<std::mutex> integration_lock(object_mutex_);
+        std::scoped_lock<std::mutex> lock_integration(mutex_);
 
         auto color        = frame.color_;
         auto object_depth = frame.depth_.clone();
@@ -85,7 +85,8 @@ namespace oslam
 #ifdef OSLAM_DEBUG_VIS
         cv::Mat cvt8;
         cv::convertScaleAbs(object_depth, cvt8, 0.25);
-        cv::imshow("Integrating Depth", cvt8);
+        /* cv::imshow("Integrating Depth", cvt8); */
+        /* cv::waitKey(1); */
 #endif
 
         open3d::cuda::RGBDImageCuda object_rgbd_cuda;
@@ -121,8 +122,8 @@ namespace oslam
                              open3d::cuda::ImageCuda<uchar, 3> &color,
                              const Eigen::Matrix4d &camera_pose)
     {
+        std::scoped_lock<std::mutex> lock_raycast(mutex_);
         open3d::cuda::TransformCuda camera_to_object_cuda;
-        //! TODO: Incorrect?
         camera_to_object_cuda.FromEigen(camera_pose);
         volume_.RayCasting(vertex, normal, color, intrinsic_cuda_, camera_to_object_cuda);
     }

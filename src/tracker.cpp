@@ -24,7 +24,7 @@
 
 namespace oslam
 {
-    Tracker::Tracker(RendererOutputQueue *renderer_output_queue, OutputQueue *output_queue)
+    Tracker::Tracker(RendererOutputQueue* renderer_output_queue, OutputQueue* output_queue)
         : MISO(output_queue, "Tracker"), frame_queue_("InputFrameQueue"), renderer_output_queue_(renderer_output_queue)
     {
         spdlog::debug("CONSTRUCT: Tracker");
