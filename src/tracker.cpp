@@ -118,7 +118,7 @@ namespace oslam
 
             cuda::RGBDOdometryCuda<3> odometry;
             odometry.SetIntrinsics(frame.intrinsic_);
-            odometry.SetParameters(odometry::OdometryOption({ 20, 10, 5 }, 0.07), 0.5f, cuda::OdometryType::FRAME_TO_MODEL);
+            odometry.SetParameters(odometry::OdometryOption({ 20, 10, 5 }, 0.07), 0.5F, cuda::OdometryType::FRAME_TO_MODEL);
 
             spdlog::debug("Initializing Odometry for frame: {}", curr_timestamp_);
             odometry.Initialize(frame_rgbd, model_vertices_cuda, model_normals_cuda, model_color_map_cuda);
@@ -129,7 +129,9 @@ namespace oslam
             relative_camera_pose = std::get<1>(result);
 
             if (success)
+            {
                 tracker_status = TrackerStatus::VALID;
+            }
 
             information_matrix   = odometry.ComputeInformationMatrix();
             auto odo_finish_time = Timer::toc(odo_start_time).count();

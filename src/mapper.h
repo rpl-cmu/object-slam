@@ -51,23 +51,26 @@ namespace oslam
         virtual void setMaxTimestamp(Timestamp timestamp) { max_timestamp_ = timestamp; }
 
        private:
-        constexpr static double SCORE_THRESHOLD  = 0.5;
-        constexpr static int MASK_AREA_THRESHOLD = 2500;
+        constexpr static double SCORE_THRESHOLD    = 0.5;
+        constexpr static float IOU_OVERLAP_THRESHOLD = 0.2F;
+        constexpr static int MASK_AREA_THRESHOLD   = 2500;
+        constexpr static int BACKGROUND_RESOLUTION = 256;
+        constexpr static int OBJECT_RESOLUTION     = 128;
 
         virtual InputUniquePtr getInputPacket() override;
 
-        TSDFObject::Ptr createBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose);
-        TSDFObject::Ptr createObject(const Frame& frame,
-                                     const InstanceImage& instance_image,
-                                     const Eigen::Matrix4d& camera_pose);
+        static TSDFObject::Ptr createBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose);
+        static TSDFObject::Ptr createObject(const Frame& frame,
+                                            const InstanceImage& instance_image,
+                                            const Eigen::Matrix4d& camera_pose);
 
         void raycastMapObjects(std::vector<std::pair<ObjectId, cv::Mat>>& object_raycasts,
                                const Frame& frame,
                                const Eigen::Matrix4d& camera_pose);
 
-        InstanceImages::const_iterator associateObjects(const cv::Mat& object_raycast,
-                                                  const InstanceImages& instance_images,
-                                                  std::vector<bool>& instance_matches);
+        static InstanceImages::const_iterator associateObjects(const cv::Mat& object_raycast,
+                                                        const InstanceImages& instance_images,
+                                                        std::vector<bool>& instance_matches);
 
         Map::Ptr map_;
         ObjectId active_bg_id_;

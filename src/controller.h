@@ -32,8 +32,9 @@ namespace oslam
     {
        public:
         OSLAM_DELETE_COPY_CONSTRUCTORS(Controller);
+        OSLAM_DELETE_MOVE_CONSTRUCTORS(Controller);
 
-        explicit Controller(const std::string& dataset_path);
+        explicit Controller(std::string dataset_path);
         virtual ~Controller() = default;
 
         bool start();

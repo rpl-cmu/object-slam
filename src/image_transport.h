@@ -44,10 +44,10 @@ namespace oslam
         ImageTransportOutput::UniquePtr process(Frame::UniquePtr frame);
 
         //! \brief Serialize the image to send to server
-        std::string serializeFrame(const Frame& frame);
+        static std::string serializeFrame(const Frame& frame);
 
         //! \brief Deserialize the received image from server
-        ImageTransportOutput::UniquePtr deserializeFrame(Timestamp timestamp, const MaskImage& mask_pbuf);
+        static ImageTransportOutput::UniquePtr deserializeFrame(Timestamp timestamp, const MaskImage& mask_pbuf);
 
         zmq::context_t context_{ 1 };  //!< Shared ZMQ context for thread to receive and send data
         zmq::socket_t req_sock_;       //!< ZMQ socket to send request to Python server

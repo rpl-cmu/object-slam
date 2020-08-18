@@ -123,15 +123,15 @@ namespace oslam
 
         cv::Mat color   = cv::imread(rgb_files_.at(curr_idx_).string(), cv::IMREAD_COLOR);
         cv::Mat depth   = cv::imread(depth_files_.at(curr_idx_).string(), cv::IMREAD_ANYDEPTH);
-        cv::Mat gt_mask = cv::imread(mask_files_.at(curr_idx_).string());
 
         // TODO:(Akash) Read ground truth pose from file conditionally based on input parameter
+        /* cv::Mat gt_mask = cv::imread(mask_files_.at(curr_idx_).string()); */
         /* p_data->gt_pose = Eigen::Matrix4d::Identity(); */
 
         // Every 10th frame requires semantic segmentation
         for (const auto &callback : output_callbacks_)
         {
-            callback(std::make_unique<Frame>(curr_idx_ + 1, color, depth, intrinsic_, (curr_idx_ % 10) == 0));
+            callback(std::make_unique<Frame>(curr_idx_ + 1, color, depth, intrinsic_, (curr_idx_ % KEYFRAME_LENGTH) == 0));
         }
         return true;
     }

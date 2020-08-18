@@ -67,10 +67,12 @@ namespace oslam
         std::atomic_int non_existence_ = 1;
 
        private:
-        constexpr static int M_SUBVOLUME_RES = 16;  //!< Each subvolume unit has 16^3 voxels
-        int resolution_;                            //!< Resolution for the object volume (about 128^3 voxels)
-        InstanceImage instance_image_;              //!< Object semantic information
-        Eigen::Matrix4d pose_;                      //!< Object pose w.r.t world frame T_o_w
+        constexpr static int SUBVOLUME_RES     = 16;  //!< Each subvolume unit has 16^3 voxels
+        constexpr static float VOLUME_SIZE_SCALE = 0.9F;
+        constexpr static float TSDF_TRUNCATION_SCALE = 5.0F;
+        int resolution_;                //!< Resolution for the object volume (about 128^3 voxels)
+        InstanceImage instance_image_;  //!< Object semantic information
+        Eigen::Matrix4d pose_;          //!< Object pose w.r.t world frame T_o_w
 
         open3d::camera::PinholeCameraIntrinsic intrinsic_;
         open3d::cuda::PinholeCameraIntrinsicCuda intrinsic_cuda_;

@@ -41,14 +41,17 @@ namespace oslam
     {
         std::scoped_lock<std::mutex> lock_remove_object(mutex_);
         auto success = id_to_object_.erase(id);
-        if(success)
-            spdlog::debug("Removed object: {} from the map, new size: {}", id);
-        return success;
+        if(success == 0U)
+        {
+            spdlog::debug("Failed to remove object: {} from the map, {} does not exist", id);
+            return false;
+        }
+        return true;
     }
     TSDFObject::Ptr Map::getObject(const ObjectId &id)
     {
         std::scoped_lock<std::mutex> lock_get_object(mutex_);
-        IdToObjectMap::const_iterator it = id_to_object_.find(id);
+        auto it = id_to_object_.find(id);
         if (it == id_to_object_.end())
         {
             spdlog::error("Fatal: could not find object in the map");

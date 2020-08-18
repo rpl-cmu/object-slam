@@ -32,19 +32,19 @@ namespace oslam
        public:
         OSLAM_POINTER_TYPEDEFS(Map);
         OSLAM_DELETE_COPY_CONSTRUCTORS(Map);
+        OSLAM_DELETE_MOVE_CONSTRUCTORS(Map);
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
         using IdToObjectMap = std::unordered_map<ObjectId, TSDFObject::Ptr>;
 
         explicit Map() = default;
-        virtual ~Map() { id_to_object_.clear(); }
+        virtual ~Map() = default;
 
         bool addObject(TSDFObject::Ptr object, bool is_active_bg = false);
         bool removeObject(const ObjectId& id);
 
         TSDFObject::Ptr getObject(const ObjectId &id);
         TSDFObject::Ptr getBackground();
-
 
         //! Map is a hashtable of different objects
         IdToObjectMap id_to_object_;

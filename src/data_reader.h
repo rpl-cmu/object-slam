@@ -62,6 +62,7 @@ namespace oslam
         bool parseDataset();
         bool readFrame();
 
+        constexpr static int KEYFRAME_LENGTH = 10;
         fs::path root_dir_;                  //!< Root directory of the dataset folder
         std::size_t size_          = 0;      //!< Number of images color/depth in the dataset folder
         Timestamp curr_idx_        = 0;      //!< Current index of files being read

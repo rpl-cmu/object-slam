@@ -18,8 +18,8 @@
 
 namespace oslam
 {
-    Controller::Controller(const std::string& dataset_path)
-        : dataset_path_(dataset_path),
+    Controller::Controller(std::string dataset_path)
+        : dataset_path_(std::move(dataset_path)),
           transport_input_queue_("TransportFrameQueue"),
           transport_output_queue_("MaskedImageQueue"),
           tracker_output_queue_("TrackerOutputQueue"),
@@ -29,7 +29,7 @@ namespace oslam
         spdlog::debug("CONSTRUCT: Controller");
         spdlog::info("Thread ({}, {}) started", "ControllerThread", std::this_thread::get_id());
 
-        //!TODO: Required?
+        //! TODO: Required?
         CheckCuda(cudaSetDevice(0));
 
         map_ = std::make_shared<oslam::Map>();
@@ -37,14 +37,15 @@ namespace oslam
         data_reader_     = std::make_shared<oslam::DataReader>(dataset_path_);
         image_transport_ = std::make_shared<oslam::ImageTransporter>(&transport_input_queue_, &transport_output_queue_);
         tracker_         = std::make_shared<oslam::Tracker>(&renderer_output_queue_, &tracker_output_queue_);
-        mapper_          = std::make_shared<oslam::Mapper>(map_, &tracker_output_queue_, &transport_output_queue_, &renderer_input_queue_);
-        renderer_        = std::make_shared<oslam::Renderer>(map_, &renderer_input_queue_, &renderer_output_queue_);
+        mapper_ =
+            std::make_shared<oslam::Mapper>(map_, &tracker_output_queue_, &transport_output_queue_, &renderer_input_queue_);
+        renderer_ = std::make_shared<oslam::Renderer>(map_, &renderer_input_queue_, &renderer_output_queue_);
     }
 
     bool Controller::start()
     {
         std::string figlet =
-         R"(
+            R"(
              ____  __     _         __  ______   ___   __  ___
             / __ \/ /    (_)__ ____/ /_/ __/ /  / _ | /  |/  /
            / /_/ / _ \  / / -_) __/ __/\ \/ /__/ __ |/ /|_/ /
@@ -73,21 +74,20 @@ namespace oslam
 
     bool Controller::setup()
     {
-        data_reader_->registerShutdownCallback(
-            std::bind(&Tracker::setMaxTimestamp, tracker_, std::placeholders::_1));
-
-        data_reader_->registerShutdownCallback(
-            std::bind(&Mapper::setMaxTimestamp, mapper_, std::placeholders::_1));
+        data_reader_->registerShutdownCallback([this] (Timestamp timestamp) { tracker_->setMaxTimestamp(timestamp); });
+        data_reader_->registerShutdownCallback([this] (Timestamp timestamp) { mapper_->setMaxTimestamp(timestamp); });
 
         //! DataReader fills the ImageTransporter Input Queue
         auto &transport_frame_queue = transport_input_queue_;
-        data_reader_->registerOutputCallback([&transport_frame_queue](Frame::Ptr frame) {
+        data_reader_->registerOutputCallback([&transport_frame_queue](const Frame::Ptr& frame) {
             if (frame->is_maskframe_)
+            {
                 transport_frame_queue.push(std::make_unique<Frame>(*frame));
+            }
         });
-        //! DataReader also fills the Tracker Frame Queue
-        data_reader_->registerOutputCallback(std::bind(&Tracker::fillFrameQueue, tracker_, std::placeholders::_1));
 
+        //! DataReader also fills the Tracker Frame Queue
+        data_reader_->registerOutputCallback([this] (const Frame::Ptr& frame) { tracker_->fillFrameQueue(frame); });
         return (data_reader_ && image_transport_ && tracker_ && mapper_ && renderer_);
     }
 
@@ -125,7 +125,8 @@ namespace oslam
                 tracker_output_queue_.isShutdown(),
                 tracker_output_queue_.empty());
 
-            std::chrono::milliseconds sleep_duration{ 500 };
+            static constexpr int half_s = 500;
+            std::chrono::milliseconds sleep_duration{ half_s };
             std::this_thread::sleep_for(sleep_duration);
         }
             spdlog::debug("\n"

@@ -29,7 +29,6 @@ namespace oslam
                    OutputQueue* output_queue)
         : MISO(output_queue, "Mapper"),
           map_(map),
-          active_bg_id_(ObjectId()),
           tracker_output_queue_(tracker_output_queue),
           transport_output_queue_(transport_output_queue)
     {
@@ -114,7 +113,7 @@ namespace oslam
             // Instantiate objects and background in map
             if (mapper_payload.tracker_status_ == TrackerStatus::VALID)
             {
-                const Eigen::Matrix4d camera_pose = relative_camera_pose;
+                const Eigen::Matrix4d& camera_pose = relative_camera_pose;
                 T_camera_to_world_.emplace_back(camera_pose);
 
                 // Add camera pose and factor to the graph
@@ -175,12 +174,13 @@ namespace oslam
                 InstanceImages frame_instance_images;
                 frame_instance_images.reserve(instance_images.size());
                 std::vector<bool> frame_instance_matches(instance_images.size(), false);
-                for (auto& instance_image : instance_images)
+                for (const auto& instance_image : instance_images)
                 {
                     //! Skip for background object
                     if (instance_image.label_ == 0)
+                    {
                         continue;
-
+                    }
                     //! Project the mask from maskframe to current frame
                     cuda::ImageCuda<uchar, 1> src_mask;
                     src_mask.Upload(instance_image.maskb_);
@@ -228,7 +228,7 @@ namespace oslam
 
                 for (size_t i = 0; i < frame_instance_matches.size(); i++)
                 {
-                    if (frame_instance_matches.at(i) == false)
+                    if (!frame_instance_matches.at(i))
                     {
                         // Create new object instance
                         auto object = createObject(frame, frame_instance_images.at(i), camera_pose);
@@ -260,8 +260,10 @@ namespace oslam
             const ObjectId id           = object_pair.first;
             TSDFObject::ConstPtr object = object_pair.second;
 
-            if(object->isBackground())
+            if (object->isBackground())
+            {
                 continue;
+            }
 
             double existence_expect = object->getExistExpectation();
             spdlog::debug("{} -> Existence expectation: {}", existence_expect);
@@ -287,7 +289,7 @@ namespace oslam
         InstanceImage background_instance(frame.width_, frame.height_);
         ObjectId background_id(0, frame.timestamp_, BoundingBox({ 0, 0, frame.width_ - 1, frame.height_ - 1 }));
         TSDFObject::Ptr background =
-            std::make_shared<TSDFObject>(background_id, frame, background_instance, camera_pose, 256);
+            std::make_shared<TSDFObject>(background_id, frame, background_instance, camera_pose, BACKGROUND_RESOLUTION);
 
         background->integrate(frame, background_instance, camera_pose);
         return background;
@@ -323,7 +325,8 @@ namespace oslam
         }
 
         ObjectId object_id(instance_image.label_, frame.timestamp_, instance_image.bbox_);
-        TSDFObject::Ptr object = std::make_shared<TSDFObject>(object_id, frame, instance_image, camera_pose, 128);
+        TSDFObject::Ptr object =
+            std::make_shared<TSDFObject>(object_id, frame, instance_image, camera_pose, OBJECT_RESOLUTION);
         object->integrate(frame, instance_image, camera_pose);
         return object;
     }
@@ -339,9 +342,12 @@ namespace oslam
             TSDFObject::Ptr object = object_pair.second;
 
             if (object->isBackground())
+            {
                 continue;
+            }
 
-            cuda::ImageCuda<float, 3> vertex, normal;
+            cuda::ImageCuda<float, 3> vertex;
+            cuda::ImageCuda<float, 3> normal;
             cuda::ImageCuda<uchar, 3> color;
 
             vertex.Create(frame.width_, frame.height_);
@@ -356,14 +362,14 @@ namespace oslam
     }
 
     InstanceImages::const_iterator Mapper::associateObjects(const cv::Mat& object_raycast,
-                                                      const InstanceImages& instance_images,
-                                                      std::vector<bool>& instance_matches)
+                                                            const InstanceImages& instance_images,
+                                                            std::vector<bool>& instance_matches)
     {
         cv::Mat gray, mask;
         cv::cvtColor(object_raycast, gray, cv::COLOR_BGR2GRAY);
         cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY);
 
-        InstanceImages::const_iterator iter = instance_images.begin();
+        auto iter = instance_images.begin();
         for (; iter != instance_images.end(); ++iter)
         {
             if (iter->score_ < SCORE_THRESHOLD)
@@ -381,12 +387,10 @@ namespace oslam
             int intersection_val = cv::countNonZero(intersection_mask);
 
             auto quality = static_cast<float>(intersection_val) / static_cast<float>(union_val);
-            spdlog::debug("Quality of the association: {}, Target label: {}",
-                          quality,
-                          iter->label_);
+            spdlog::debug("Quality of the association: {}, Target label: {}", quality, iter->label_);
 
             size_t curr_idx = size_t(iter - instance_images.begin());
-            if (instance_matches.at(curr_idx) == false && quality > 0.2f && union_val > MASK_AREA_THRESHOLD)
+            if (!instance_matches.at(curr_idx) && quality > IOU_OVERLAP_THRESHOLD && union_val > MASK_AREA_THRESHOLD)
             {
                 instance_matches.at(curr_idx) = true;
                 return iter;

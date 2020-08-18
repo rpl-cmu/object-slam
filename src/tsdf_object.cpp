@@ -53,7 +53,7 @@ namespace oslam
         // Appropriately size the voxel_length of volume for appropriate resolution of the object
         Eigen::Vector3d object_max = object_point_cloud.GetMaxBound();
         Eigen::Vector3d object_min = object_point_cloud.GetMinBound();
-        float voxel_length        = 0.9f * float((object_max - object_min).maxCoeff() / resolution);
+        float voxel_length         = VOLUME_SIZE_SCALE * float((object_max - object_min).maxCoeff() / resolution);
 
         spdlog::debug("Volume pose\n {}", pose_);
         spdlog::debug("Voxel length: {}", voxel_length);
@@ -65,11 +65,25 @@ namespace oslam
         // Allocate lower memory since we will create multiple TSDF objects
         if (instance_image.label_ == 0)
         {
-            volume_ = cuda::ScalableTSDFVolumeCuda(M_SUBVOLUME_RES, voxel_length, 5 * voxel_length, object_pose_cuda, 2000, 8000);
+            constexpr int BUCKET_COUNT   = 2000;
+            constexpr int VALUE_CAPACITY = 8000;
+            volume_                      = cuda::ScalableTSDFVolumeCuda(SUBVOLUME_RES,
+                                                   voxel_length,
+                                                   TSDF_TRUNCATION_SCALE * voxel_length,
+                                                   object_pose_cuda,
+                                                   BUCKET_COUNT,
+                                                   VALUE_CAPACITY);
             spdlog::debug("Created new background instance");
             return;
         }
-        volume_ = cuda::ScalableTSDFVolumeCuda(M_SUBVOLUME_RES, voxel_length, 5 * voxel_length, object_pose_cuda, 2000, 4000);
+        constexpr int BUCKET_COUNT   = 2000;
+        constexpr int VALUE_CAPACITY = 4000;
+        volume_                      = cuda::ScalableTSDFVolumeCuda(SUBVOLUME_RES,
+                                               voxel_length,
+                                               TSDF_TRUNCATION_SCALE * voxel_length,
+                                               object_pose_cuda,
+                                               BUCKET_COUNT,
+                                               VALUE_CAPACITY);
         spdlog::debug("Created new object instance");
     }
 
@@ -84,7 +98,7 @@ namespace oslam
         // For visualization/debug only
 #ifdef OSLAM_DEBUG_VIS
         cv::Mat cvt8;
-        cv::convertScaleAbs(object_depth, cvt8, 0.25);
+        cv::convertScaleAbs(object_depth, cvt8, 0.25F);
         /* cv::imshow("Integrating Depth", cvt8); */
         /* cv::waitKey(1); */
 #endif
@@ -104,11 +118,8 @@ namespace oslam
         if (frame.timestamp_ % 100 == 0)
         {
             volume_.GetAllSubvolumes();
-            open3d::cuda::ScalableMeshVolumeCuda mesher(open3d::cuda::VertexWithColor,
-                                                        16,
-                                                        volume_.active_subvolume_entry_array_.size(),
-                                                        2000000,
-                                                        4000000);
+            open3d::cuda::ScalableMeshVolumeCuda mesher(
+                open3d::cuda::VertexWithColor, 16, volume_.active_subvolume_entry_array_.size(), 2000000, 4000000);
             mesher.MarchingCubes(volume_);
             auto mesh = mesher.mesh().Download();
             open3d::visualization::DrawGeometries({ mesh }, "Mesh after integration");

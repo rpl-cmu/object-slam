@@ -30,7 +30,9 @@ namespace oslam
     ImageTransportOutput::UniquePtr ImageTransporter::runOnce(Frame::UniquePtr frame)
     {
         if (frame)
+        {
             return process(std::move(frame));
+        }
         return nullptr;
     }
 
@@ -57,14 +59,14 @@ namespace oslam
         return nullptr;
     }
 
-    std::string ImageTransporter::serializeFrame(const Frame& r_frame)
+    std::string ImageTransporter::serializeFrame(const Frame& frame)
     {
         oslam::ColorImage image_pbuf;
-        image_pbuf.set_width(r_frame.width_);    // 640
-        image_pbuf.set_height(r_frame.height_);  // 480
-        image_pbuf.set_num_channels(r_frame.color_.channels());
+        image_pbuf.set_width(frame.width_);    // 640
+        image_pbuf.set_height(frame.height_);  // 480
+        image_pbuf.set_num_channels(frame.color_.channels());
         image_pbuf.set_bytes_per_channel(1);  // CV_8UC3
-        image_pbuf.set_data(std::string(r_frame.color_.datastart, r_frame.color_.dataend));
+        image_pbuf.set_data(std::string(frame.color_.datastart, frame.color_.dataend));
 
         std::string str;
         image_pbuf.SerializeToString(&str);
@@ -87,7 +89,7 @@ namespace oslam
                                       static_cast<int>(mask_pbuf.bboxes(i).coordinates(2)),
                                       static_cast<int>(mask_pbuf.bboxes(i).coordinates(3)) };
             cv::Mat curr_mask;
-            cv::bitwise_and(image, static_cast<std::uint16_t>(1u << i), curr_mask);
+            cv::bitwise_and(image, static_cast<std::uint16_t>(1U << i), curr_mask);
             curr_mask = (curr_mask >= 1);
             output->instance_images_.emplace_back(curr_mask, curr_bbox, curr_label, curr_score);
         }
