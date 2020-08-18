@@ -8,6 +8,8 @@
 #ifndef OSLAM_MAP_H
 #define OSLAM_MAP_H
 
+#include <Cuda/Geometry/ImageCuda.h>
+
 #include <condition_variable>
 #include <map>
 /* #include <gtsam/nonlinear/NonlinearFactorGraph.h> */
@@ -16,58 +18,40 @@
 #include "instance_image.h"
 #include "tsdf_object.h"
 #include "utils/macros.h"
-#include "utils/types.h"
 #include "utils/thread_sync_var.h"
+#include "utils/types.h"
 
 namespace oslam
 {
-    /*! \class GlobalMap
-     *  \brief Brief class description
-     *
-     *  Detailed description
+    /*! \class Map
+     *  \brief A map representing a scene consists of a hashtable of object volumes, each with their own poses
+     *  and hence forming a posegraph
      */
-    class GlobalMap
+    struct Map
     {
-        using IdToObjectMap = std::unordered_map<ObjectId, TSDFObject::Ptr>;
-
        public:
-        OSLAM_DELETE_COPY_CONSTRUCTORS(GlobalMap);
+        OSLAM_POINTER_TYPEDEFS(Map);
+        OSLAM_DELETE_COPY_CONSTRUCTORS(Map);
+        OSLAM_DELETE_MOVE_CONSTRUCTORS(Map);
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-        //! Singleton Global map object
-        static GlobalMap &get_instance()
-        {
-            static GlobalMap global_map;
-            return global_map;
-        }
-        virtual ~GlobalMap() { m_id_to_object.clear(); }
+        using IdToObjectMap = std::unordered_map<ObjectId, TSDFObject::Ptr>;
 
-        std::pair<ObjectId, TSDFObject::Ptr> create_background(const Frame &r_frame, const Eigen::Matrix4d &r_camera_pose);
-        std::pair<ObjectId, TSDFObject::Ptr> create_object(const Frame &r_frame, const InstanceImage &r_instance_image, const Eigen::Matrix4d &r_camera_pose);
+        explicit Map() = default;
+        virtual ~Map() = default;
 
-        bool integrate_background(const Frame& r_frame, const Eigen::Matrix4d& r_camera_pose);
-        bool integrate_object(const Frame &r_frame, const InstanceImage& r_instance_image,
-                              const Eigen::Matrix4d &r_camera_pose);
+        bool addObject(TSDFObject::Ptr object, bool is_active_bg = false);
+        bool removeObject(const ObjectId& id);
 
-        void raycast_background(open3d::cuda::ImageCuda<float, 3> &vertex, open3d::cuda::ImageCuda<float, 3> &normal,
-                                open3d::cuda::ImageCuda<uchar, 3> &color, const Eigen::Matrix4d &r_camera_pose);
-
-        inline std::size_t size() const { return m_id_to_object.size(); }
-
-        TSDFObject::ConstPtr get_object(const ObjectId& r_id) const;
-
-        ThreadSyncVar<bool> m_can_raycast;
-       private:
-        explicit GlobalMap() = default;
-
-        constexpr static double SCORE_THRESHOLD = 0.5;
-        constexpr static int MASK_AREA_THRESHOLD = 2500;
+        TSDFObject::Ptr getObject(const ObjectId &id);
+        TSDFObject::Ptr getBackground();
 
         //! Map is a hashtable of different objects
-        IdToObjectMap m_id_to_object;
+        IdToObjectMap id_to_object_;
+        ObjectId active_bg_id_;
 
-        TSDFObject::Ptr mp_active_background;
-
+        private:
+        std::mutex mutex_;
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_MAP_H */

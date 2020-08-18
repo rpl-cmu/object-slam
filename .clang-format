@@ -21,7 +21,7 @@ SpaceBeforeCtorInitializerColon: true
 SpaceBeforeInheritanceColon: true
 SpaceBeforeRangeBasedForLoopColon: true
 SpaceInEmptyParentheses: false
-AlignAfterOpenBracket: AlwaysBreak
+AlignAfterOpenBracket: Align
 BinPackArguments: false
 BinPackParameters: false
 Standard: Cpp11

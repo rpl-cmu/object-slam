@@ -26,10 +26,10 @@ namespace oslam
     struct ObjectId
     {
         unsigned int label;
-        oslam::Timestamp frame_created;
-        oslam::BoundingBox bbx;
+        Timestamp frame_created;
+        BoundingBox bbx;
 
-        ObjectId(unsigned int _label, unsigned int _frame_created, BoundingBox _bbx)
+        ObjectId(unsigned int _label, Timestamp _frame_created, BoundingBox _bbx)
             : label(_label), frame_created(_frame_created), bbx(_bbx)
         {
         }
@@ -48,7 +48,6 @@ namespace oslam
             return os << "L:" << r_id.label << "-T:" << r_id.frame_created << "-BBX:{" << r_id.bbx[0] << "," << r_id.bbx[1] << "}";
         }
     };
-
 }  // namespace oslam
 
 namespace std

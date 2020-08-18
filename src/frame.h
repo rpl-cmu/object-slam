@@ -29,45 +29,45 @@ namespace oslam
     {
        public:
         OSLAM_POINTER_TYPEDEFS(Frame);
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-        explicit Frame(Timestamp timestamp, const cv::Mat &r_color, const cv::Mat &r_depth,
-                       const camera::PinholeCameraIntrinsic &r_intrinsic, bool is_maskframe = false)
+        explicit Frame(Timestamp timestamp, const cv::Mat &color, const cv::Mat &depth,
+                       const camera::PinholeCameraIntrinsic &intrinsic, bool is_maskframe = false)
             : PipelinePayload(timestamp),
-              m_width(r_color.cols),
-              m_height(r_color.rows),
-              m_color(r_color),
-              m_depth(r_depth),
-              m_intrinsic(r_intrinsic),
-              m_is_maskframe(is_maskframe){};
+              width_(color.cols),
+              height_(color.rows),
+              color_(color),
+              depth_(depth),
+              intrinsic_(intrinsic),
+              is_maskframe_(is_maskframe){};
 
         ~Frame() override = default;
 
-        //! Copy constructor
-        Frame(const Frame &r_frame)
-            : PipelinePayload(r_frame.m_timestamp),
-              m_width(r_frame.m_width),
-              m_height(r_frame.m_height),
-              m_color(r_frame.m_color),
-              m_depth(r_frame.m_depth),
-              m_intrinsic(r_frame.m_intrinsic),
-              m_is_maskframe(r_frame.m_is_maskframe){};
+        //! Copy constructor and assignment
+        Frame(const Frame &frame)
+            : PipelinePayload(frame.timestamp_),
+              width_(frame.width_),
+              height_(frame.height_),
+              color_(frame.color_),
+              depth_(frame.depth_),
+              intrinsic_(frame.intrinsic_),
+              is_maskframe_(frame.is_maskframe_){};
+        Frame& operator=(const Frame& frame) = default;
+
+        //! Move constructor and assignment TODO: Required?
+        Frame(Frame&& frame) = default;
+        Frame& operator=(Frame&& frame) = default;
 
        public:
         //! Frame size
-        const int m_width  = -1;
-        const int m_height = -1;
+        const int width_  = -1;
+        const int height_ = -1;
         //! Color and depth images
-        const cv::Mat m_color;
-        const cv::Mat m_depth;
-
-        //! Camera intrinsics
-        const camera::PinholeCameraIntrinsic m_intrinsic;
-
-        //! We decide at read whether a frame needs instance segmentation
-        const bool m_is_maskframe = { false };
-
-        //! Pose of the frame
-        Eigen::Matrix4d m_pose = Eigen::Matrix4d::Identity();
+        const cv::Mat color_;
+        const cv::Mat depth_;
+        const camera::PinholeCameraIntrinsic intrinsic_;
+        const bool is_maskframe_ = { false }; //!< Does frame have instance segmentation
+        Eigen::Matrix4d pose_ = Eigen::Matrix4d::Identity(); //!< Pose of the frame to current local submap TODO: Required?
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_FRAME_H */

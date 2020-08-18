@@ -17,7 +17,7 @@ conan_cmake_run(
   REQUIRES
   ${CONAN_EXTRA_REQUIRES}
   catch2/2.11.0
-  docopt.cpp/0.6.2
+  CLI11/1.9.1@cliutils/stable
   fmt/6.2.0
   spdlog/1.6.1
   cppzmq/4.6.0

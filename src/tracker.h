@@ -20,8 +20,8 @@
 #include <vector>
 
 #include "map.h"
-#include "tracker_payload.h"
 #include "renderer_payload.h"
+#include "tracker_payload.h"
 #include "utils/macros.h"
 #include "utils/pipeline_module.h"
 #include "utils/thread_safe_queue.h"
@@ -29,9 +29,7 @@
 namespace oslam
 {
     /*! \class Tracker
-     *  \brief Brief class description
-     *
-     *  Detailed description
+     *  \brief Tracks the incoming camera frame via frame-to-model to obtain relative camera pose
      */
     class Tracker : public MISOPipelineModule<TrackerInput, TrackerOutput>
     {
@@ -40,55 +38,36 @@ namespace oslam
         OSLAM_DELETE_COPY_CONSTRUCTORS(Tracker);
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-        using MISO = MISOPipelineModule<TrackerInput, TrackerOutput>;
+        using MISO                = MISOPipelineModule<TrackerInput, TrackerOutput>;
         using RendererOutputQueue = ThreadsafeQueue<RendererOutput::UniquePtr>;
 
-        Tracker(RendererOutputQueue* p_renderer_output_queue, OutputQueue* p_output_queue);
+        Tracker(RendererOutputQueue* renderer_output_queue, OutputQueue* output_queue);
         virtual ~Tracker() = default;
 
-        void fill_frame_queue(Frame::Ptr p_frame) { m_frame_queue.push(std::make_unique<Frame>(*p_frame)); }
+        void fillFrameQueue(Frame::Ptr p_frame) { frame_queue_.push(std::make_unique<Frame>(*p_frame)); }
 
-        virtual OutputUniquePtr run_once(InputUniquePtr p_input) override;
+        virtual OutputUniquePtr runOnce(InputUniquePtr input) override;
 
-        virtual bool has_work() const override { return (m_curr_timestamp < m_max_timestamp); }
-        virtual void set_max_timestamp(Timestamp timestamp) { m_max_timestamp = timestamp; }
+        virtual bool hasWork() const override { return (curr_timestamp_ < max_timestamp_); }
+        virtual void setMaxTimestamp(Timestamp timestamp) { max_timestamp_ = timestamp; }
 
        private:
-        virtual InputUniquePtr get_input_packet() override;
+        virtual InputUniquePtr getInputPacket() override;
 
-        virtual void shutdown_queues() override;
-        bool m_first_run = { true };
+        virtual void shutdownQueues() override;
 
         //! Input Queues which are to be synchronised
-        ThreadsafeQueue<Frame::UniquePtr> m_frame_queue;
-        RendererOutputQueue* mp_renderer_output_queue;
+        ThreadsafeQueue<Frame::UniquePtr> frame_queue_;
+        RendererOutputQueue *renderer_output_queue_;
 
-        //! Reference to the global map
-        GlobalMap& mr_global_map;
+        Timestamp curr_timestamp_ = 0;
+        Timestamp max_timestamp_  = std::numeric_limits<Timestamp>::max();
 
-        //! Current timestamp being processed
-        Timestamp m_curr_timestamp = 0;
-        Timestamp m_max_timestamp            = std::numeric_limits<Timestamp>::max();
+        Eigen::Matrix4d prev_camera_pose;  //!< T_camera_to_world_ at prev timestep
 
-        //! Vector of trajectory poses w.r.t world coordinate
-        std::vector<Eigen::Matrix4d, Eigen::aligned_allocator<Eigen::Matrix4d>> mv_T_camera_2_world;
-        //! Camera intrinsics
-        cuda::PinholeCameraIntrinsicCuda mc_intrinsic;
-
-        cuda::ImageCuda<ushort, 1> mc_curr_depth_raw;
-        cuda::ImageCuda<uchar, 3> mc_curr_color;
-
-        //! TODO(Akash): Consider coarse-to-fine ICP
-        cuda::ImageCuda<float, 3> mc_curr_vertex_map;
-        cuda::ImageCuda<float, 3> mc_curr_normal_map;
-
-        ObjectId m_background_id;
-        TSDFObject::Ptr mp_background;
-
-        //! Previous frame vertex and normal map in global coordinates
-        cuda::ImageCuda<float, 3> mc_g_prev_vertex_map;
-        cuda::ImageCuda<float, 3> mc_g_prev_normal_map;
-        cuda::ImageCuda<uchar, 3> mc_g_prev_color;
+        cuda::PinholeCameraIntrinsicCuda intrinsic_cuda_;
+        cuda::ImageCuda<ushort, 1> frame_raw_depth_cuda_;
+        cuda::ImageCuda<uchar, 3> frame_color_cuda_;
     };
 }  // namespace oslam
 

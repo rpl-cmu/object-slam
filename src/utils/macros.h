@@ -16,6 +16,9 @@
   TypeName(const TypeName&) = delete;             \
   void operator=(const TypeName&) = delete
 
+#define OSLAM_DELETE_MOVE_CONSTRUCTORS(TypeName) \
+  TypeName(const TypeName&&) = delete;             \
+  void operator=(const TypeName&&) = delete
 #endif /* ifndef OSLAM_MACROS_H */
 
 

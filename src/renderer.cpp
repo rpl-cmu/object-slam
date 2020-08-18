@@ -1,53 +1,59 @@
 /******************************************************************************
-* File:             renderer.cpp
-*
-* Author:           Akash Sharma
-* Created:          07/07/20
-* Description:      Implementation file for renderer
-*****************************************************************************/
+ * File:             renderer.cpp
+ *
+ * Author:           Akash Sharma
+ * Created:          07/07/20
+ * Description:      Implementation file for renderer
+ *****************************************************************************/
 #include "renderer.h"
 
-namespace oslam {
-
-    Renderer::Renderer(InputQueue* p_input_queue, OutputQueue* p_output_queue)
-        : SISO(p_input_queue, p_output_queue, "Renderer"),
-        mr_global_map(GlobalMap::get_instance())
-    {}
-
-    Renderer::OutputUniquePtr Renderer::run_once(Renderer::InputUniquePtr p_input)
+namespace oslam
+{
+    Renderer::Renderer(Map::Ptr map, InputQueue* input_queue, OutputQueue* output_queue)
+        : SISO(input_queue, output_queue, "Renderer"), map_(map)
     {
-        m_curr_timestamp = p_input->m_timestamp;
-        RendererInput& renderer_payload = *p_input;
-        const Frame& r_curr_frame = renderer_payload.m_frame;
+    }
 
-        if(renderer_payload.m_mapper_status == MapperStatus::VALID)
+    Renderer::OutputUniquePtr Renderer::runOnce(Renderer::InputUniquePtr input)
+    {
+        curr_timestamp_                       = input->timestamp_;
+        const RendererInput& renderer_payload = *input;
+        const Frame& frame                    = renderer_payload.frame_;
+
+        if (renderer_payload.mapper_status_ == MapperStatus::VALID)
         {
             auto raycast_start = Timer::tic();
 
-            if(m_curr_timestamp == 1)
+            if (curr_timestamp_ == 1)
             {
-                mc_current_global_colors.Create(r_curr_frame.m_width, r_curr_frame.m_height);
-                mc_current_global_vertices.Create(r_curr_frame.m_width, r_curr_frame.m_height);
-                mc_current_global_normals.Create(r_curr_frame.m_width, r_curr_frame.m_height);
+                model_colors_cuda_.Create(frame.width_, frame.height_);
+                model_vertices_cuda_.Create(frame.width_, frame.height_);
+                model_normals_cuda_.Create(frame.width_, frame.height_);
             }
 
-            mr_global_map.raycast_background(mc_current_global_vertices, mc_current_global_normals,
-                                             mc_current_global_colors, renderer_payload.m_camera_pose);
+            auto background = map_->getBackground();
+            if (!background)
+            {
+                spdlog::error("Background object not present for rendering");
+                return nullptr;
+            }
+            background->raycast(
+                model_vertices_cuda_, model_normals_cuda_, model_colors_cuda_, renderer_payload.camera_pose_);
 
             auto raycast_time = Timer::toc(raycast_start).count();
             spdlog::debug("Raycast took {} ms", raycast_time);
 
-            cv::Mat color_map = mc_current_global_colors.DownloadMat();
-            cv::Mat vertices = mc_current_global_vertices.DownloadMat();
-            cv::Mat normals = mc_current_global_normals.DownloadMat();
+            cv::Mat color_map = model_colors_cuda_.DownloadMat();
+            cv::Mat vertices  = model_vertices_cuda_.DownloadMat();
+            cv::Mat normals   = model_normals_cuda_.DownloadMat();
 
+#ifdef OSLAM_DEBUG_VIS
             /* cv::imshow("Color map", color_map); */
-            /* cv::imshow("Source image", r_curr_frame.m_color); */
-            /* cv::waitKey(1); */
-
-            return std::make_unique<RendererOutput>(m_curr_timestamp+1, color_map, vertices, normals);
+            /* cv::imshow("Source image", frame.color_); */
+#endif
+            spdlog::debug("Returning render output");
+            return std::make_unique<RendererOutput>(curr_timestamp_ + 1, color_map, vertices, normals);
         }
         return nullptr;
     }
-}
-
+}  // namespace oslam

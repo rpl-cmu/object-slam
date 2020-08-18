@@ -5,31 +5,30 @@
  * Created:          04/07/20
  * Description:      main
  *****************************************************************************/
-#include <docopt/docopt.h>
+#include <spdlog/spdlog.h>
+
+#include <CLI/CLI.hpp>
+
 #include "controller.h"
-
-static constexpr auto USAGE =
-  R"(Object SLAM Pipeline
-
-    Usage:
-          reconstruct [options] <dataset_path>
-
-    Options:
-          -h --help    Show the help screen
-          -v --vis     Visualize the output
-          -d --debug   Print debug logs
-    )";
 
 int main(int argc, char *argv[])
 {
+    CLI::App app{ "Object SLAM" };
+    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] %^[%L] %v%$");
 
+    std::string dataset_path;
+    app.add_option("dataset_path", dataset_path, "Path to the dataset")->required();
 
-    std::map<std::string, docopt::value> args = docopt::docopt(USAGE,
-      { std::next(argv), std::next(argv, argc) },
-      true,// show help if requested
-      "Object SLAM 0.1");// version string
+    app.add_flag(
+        "-d, --debug", [](size_t /*unused*/) { spdlog::set_level(spdlog::level::debug); }, "Print debug logs");
 
-    oslam::Controller controller(args);
+    CLI11_PARSE(app, argc, argv);
 
-    controller.start();
+    oslam::Controller controller(dataset_path);
+
+    if (controller.start())
+    {
+        return EXIT_SUCCESS;
+    }
+    return EXIT_FAILURE;
 }

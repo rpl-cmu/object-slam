@@ -65,7 +65,7 @@ class PipelineModuleBase
     virtual inline void shutdown()
     {
         spdlog::warn("Stopping module {} and its queues...", name_id_);
-        shutdown_queues();
+        shutdownQueues();
         shutdown_ = true;
     }
 
@@ -75,7 +75,7 @@ class PipelineModuleBase
         shutdown_ = false;
     }
 
-    inline bool is_working() const { return is_thread_working_ || has_work(); }
+    inline bool isWorking() const { return is_thread_working_ || hasWork(); }
 
     /**
      * @brief registerOnFailureCallback Add an extra on-failure callback to the
@@ -107,15 +107,15 @@ class PipelineModuleBase
           timestamp, queue, pipeline_payload, name_id_, max_iterations);
     }
     /**
-     * @brief shutdown_queues If the module stores Threadsafe queues, it must
+     * @brief shutdownQueues If the module stores Threadsafe queues, it must
      * shutdown those for a complete shutdown.
      */
-    virtual void shutdown_queues() = 0;
+    virtual void shutdownQueues() = 0;
 
     //! Checks if the module has work to do (should check input queues are empty)
-    virtual bool has_work() const = 0;
+    virtual bool hasWork() const = 0;
 
-    virtual void notify_on_failure()
+    virtual void notifyOnFailure()
     {
         for (const auto &on_failure_callback : on_failure_callbacks_) {
             if (on_failure_callback) {
@@ -146,8 +146,8 @@ class PipelineModuleBase
  * - run(): runs the pipeline module by pulling and pushing from/to the
  * input/output. The way pushing and pulling input/output depends on the user
  * implementation of the functions getSyncedInputPacket() and
- * push_output_packet.
- * - run_once(): given a minimal input, computes the output of the module.
+ * pushOutputPacket.
+ * - runOnce(): given a minimal input, computes the output of the module.
  * Returning a nullptr signals that the output should not be pushed as
  * output but just ignored.
  */
@@ -156,7 +156,7 @@ template<typename Input, typename Output> class PipelineModule : public Pipeline
   public:
     OSLAM_POINTER_TYPEDEFS(PipelineModule);
     OSLAM_DELETE_COPY_CONSTRUCTORS(PipelineModule);
-    //! The input is a unique ptr, as the user should implement get_input_packet
+    //! The input is a unique ptr, as the user should implement getInputPacket
     //! such that it only retrieves an input structure with all data.
     using InputUniquePtr = std::unique_ptr<Input>;
     //! The output is instead a shared ptr, since many users might need the output
@@ -167,7 +167,7 @@ template<typename Input, typename Output> class PipelineModule : public Pipeline
      * @brief PipelineModule
      * @param name_id Identifier for the pipeline module
      * @param parallel_run Spin in parallel mode or sequentially (the spin
-     * does only one call to run_once and returns).
+     * does only one call to runOnce and returns).
      */
     PipelineModule(const std::string &name_id) : PipelineModuleBase(name_id) {}
 
@@ -188,22 +188,22 @@ template<typename Input, typename Output> class PipelineModule : public Pipeline
         while (!shutdown_) {
             // Get input data from queue by waiting for payload.
             is_thread_working_ = false;
-            InputUniquePtr input = get_input_packet();
+            InputUniquePtr input = getInputPacket();
             is_thread_working_ = true;
             if (input) {
                 auto tic = oslam::Timer::tic();
 
                 // Transfer the ownership of input to the actual pipeline module.
-                // From this point on, you cannot use input, since run_once owns it.
-                OutputUniquePtr output = run_once(std::move(input));
+                // From this point on, you cannot use input, since runOnce owns it.
+                OutputUniquePtr output = runOnce(std::move(input));
                 if (output) {
                     // Received a valid output, send to output queue
-                    if (!push_output_packet(std::move(output))) {
+                    if (!pushOutputPacket(std::move(output))) {
                         spdlog::warn("Module: {} - Output push failed", name_id_);
                     }
                 } else {
                     // Notify interested parties about failure.
-                    notify_on_failure();
+                    notifyOnFailure();
                 }
                 auto spin_duration = oslam::Timer::toc(tic).count();
                 spdlog::debug("Module: {} Spin Duration: {} ms", name_id_, spin_duration);
@@ -220,21 +220,21 @@ template<typename Input, typename Output> class PipelineModule : public Pipeline
     /**
      * @brief getSyncedInputPacket Retrieves the input packet for processing when
      * spinning. The user must implement this to feed input payloads to the
-     * run_once.
+     * runOnce.
      * The typical usage of this function just pops from a threadsafe queue that
      * contains the input packets to be processed. Alternatively, one may consider
      * synchronizing different queues and generating a custom packet.
      * @param[out] input_packet Parameter to be filled that is then used by the
-     * pipeline module's specific run_once.
+     * pipeline module's specific runOnce.
      * @return a boolean indicating whether the generation of the input packet was
      * successful.
      */
     // TODO(Toni): given a list of queues, syncronize them and get an output
     // payload. Maybe keep a list of input queues, that the user can provide.
-    virtual InputUniquePtr get_input_packet() = 0;
+    virtual InputUniquePtr getInputPacket() = 0;
 
     /**
-     * @brief push_output_packet Sends the output of the module to other interested
+     * @brief pushOutputPacket Sends the output of the module to other interested
      * parties, potentially other pipeline modules.
      * The typical use case would be to just push to a threadsafe output queue
      * the newly generated output. Alternatively, one may override this function
@@ -242,7 +242,7 @@ template<typename Input, typename Output> class PipelineModule : public Pipeline
      * @param[out] output_packet  Parameter to be sent to others
      * @return boolean indicating whether the push was successful or not.
      */
-    virtual bool push_output_packet(OutputUniquePtr output_packet) const = 0;
+    virtual bool pushOutputPacket(OutputUniquePtr output_packet) const = 0;
 
     /**
      * @brief Abstract function to process a single input payload.
@@ -256,13 +256,13 @@ template<typename Input, typename Output> class PipelineModule : public Pipeline
      * @return The output payload from the pipeline module. Returning a nullptr
      * signals that the output should not be sent to the output queue.
      */
-    virtual OutputUniquePtr run_once(InputUniquePtr input) = 0;
+    virtual OutputUniquePtr runOnce(InputUniquePtr input) = 0;
 };
 
 /** @brief MIMOPipelineModule Multiple Input Multiple Output (MIMO) pipeline
  * module.
  * This is still an abstract class and the user must implement the
- * get_input_packet function that deals with the input.
+ * getInputPacket function that deals with the input.
  * Potentially one can receive Input packets via a set of callbacks.
  * Alternatively, one can use a threadsafe queue (in which case you can use
  * the class SIMOPipelineModule, a specialization of a MIMO pipeline module).
@@ -288,12 +288,12 @@ class MIMOPipelineModule : public PipelineModule<Input, Output>
     virtual ~MIMOPipelineModule() = default;
 
     /**
-     * @brief register_output_callback Add an extra output callback to the list
+     * @brief registerOutputCallback Add an extra output callback to the list
      * of callbacks. This will be called every time there is a new output from
      * this module.
      * @param output_callback actual callback to register.
      */
-    virtual void register_output_callback(const OutputCallback &output_callback)
+    virtual void registerOutputCallback(const OutputCallback &output_callback)
     {
         if(!output_callback)
             spdlog::error("Trying to register null callback for module {}", PIO::name_id_);
@@ -302,13 +302,13 @@ class MIMOPipelineModule : public PipelineModule<Input, Output>
 
   protected:
     /**
-     * @brief push_output_packet Sends the output of the module to other interested
+     * @brief pushOutputPacket Sends the output of the module to other interested
      * parties, potentially other pipeline modules.
      * Just push to a threadsafe output queue the newly generated output.
      * @param[out] output_packet  Parameter to be sent to others
      * @return boolean indicating whether the push was successful or not.
      */
-    bool push_output_packet(typename PIO::OutputUniquePtr output_packet) const override
+    bool pushOutputPacket(typename PIO::OutputUniquePtr output_packet) const override
     {
         auto tic_callbacks = oslam::Timer::tic();
         //! We need to make our packet shared in order to send it to multiple
@@ -331,7 +331,7 @@ class MIMOPipelineModule : public PipelineModule<Input, Output>
     }
 
   private:
-    //! Output callbacks that will be called on each run_once if
+    //! Output callbacks that will be called on each runOnce if
     //! an output is present.
     std::vector<OutputCallback> output_callbacks_;
 };
@@ -369,7 +369,7 @@ class SIMOPipelineModule : public MIMOPipelineModule<Input, Output>
      * @return a pointer with the generated input packet. If the generation was
      * unsuccessful, returns a nullptr.
      */
-    typename PIO::InputUniquePtr get_input_packet() override
+    typename PIO::InputUniquePtr getInputPacket() override
     {
         typename PIO::InputUniquePtr input = nullptr;
         bool queue_state = false;
@@ -386,10 +386,10 @@ class SIMOPipelineModule : public MIMOPipelineModule<Input, Output>
     }
 
     //! Called when general shutdown of PipelineModule is triggered.
-    void shutdown_queues() override { input_queue_->shutdown(); }
+    void shutdownQueues() override { input_queue_->shutdown(); }
 
     //! Checks if the module has work to do (should check input queues are empty)
-    bool has_work() const override { return !input_queue_->isShutdown() && !input_queue_->empty(); }
+    bool hasWork() const override { return !input_queue_->isShutdown() && !input_queue_->empty(); }
 
   private:
     //! Input
@@ -399,7 +399,7 @@ class SIMOPipelineModule : public MIMOPipelineModule<Input, Output>
 /** @brief MISOPipelineModule Multi Input Single Output (MISO) pipeline
  * module.
  * This is still an abstract class and the user must implement the
- * get_input_packet function that deals with the input.
+ * getInputPacket function that deals with the input.
  * Potentially one can receive Input packets via a set of callbacks.
  *
  * The implementation side of MISO wrt MIMO is that the output is sent to
@@ -434,20 +434,20 @@ class MISOPipelineModule : public MIMOPipelineModule<Input, Output>
 
     //! Override registering of output callbacks since this is only used for
     //! multiple output pipelines.
-    void register_output_callback(const typename MIMO::OutputCallback &) override
+    void registerOutputCallback(const typename MIMO::OutputCallback &) override
     {
         spdlog::warn("MISO Pipeline Module does not use callbacks.");
     }
 
   protected:
     /**
-     * @brief push_output_packet Sends the output of the module to other interested
+     * @brief pushOutputPacket Sends the output of the module to other interested
      * parties, potentially other pipeline modules.
      * Just push to a threadsafe output queue the newly generated output.
      * @param[out] output_packet  Parameter to be sent to others
      * @return boolean indicating whether the push was successful or not.
      */
-    inline bool push_output_packet(typename MIMO::OutputUniquePtr output_packet) const override
+    inline bool pushOutputPacket(typename MIMO::OutputUniquePtr output_packet) const override
     {
         if(output_queue_)
         {
@@ -455,12 +455,10 @@ class MISOPipelineModule : public MIMOPipelineModule<Input, Output>
             return true;
         }
         return false;
-        //TODO(Akash): Is this correct?
-        /* return output_queue_ ? output_queue_->push(std::move(output_packet)) : true; */
     }
 
     //! Called when general shutdown of PipelineModule is triggered.
-    void shutdown_queues() override
+    void shutdownQueues() override
     {
         if (output_queue_) output_queue_->shutdown();
     }
@@ -507,7 +505,7 @@ class SISOPipelineModule : public MISOPipelineModule<Input, Output>
 
     //! Override registering of output callbacks since this is only used for
     //! multiple output pipelines.
-    void register_output_callback(const typename MISO::OutputCallback &) override
+    void registerOutputCallback(const typename MISO::OutputCallback &) override
     {
         spdlog::warn("SISO Pipeline Module does not use callbacks.");
     }
@@ -521,7 +519,7 @@ class SISOPipelineModule : public MISOPipelineModule<Input, Output>
      * @return a pointer with the generated input packet. If the generation was
      * unsuccessful, returns a nullptr.
      */
-    typename MISO::InputUniquePtr get_input_packet() override
+    typename MISO::InputUniquePtr getInputPacket() override
     {
         typename MISO::InputUniquePtr input = nullptr;
         bool queue_state = false;
@@ -537,14 +535,14 @@ class SISOPipelineModule : public MISOPipelineModule<Input, Output>
     }
 
     //! Called when general shutdown of PipelineModule is triggered.
-    void shutdown_queues() override
+    void shutdownQueues() override
     {
         input_queue_->shutdown();
-        MISO::shutdown_queues();
+        MISO::shutdownQueues();
     }
 
     //! Checks if the module has work to do (should check input queues are empty)
-    bool has_work() const override { return !input_queue_->isShutdown() && !input_queue_->empty(); }
+    bool hasWork() const override { return !input_queue_->isShutdown() && !input_queue_->empty(); }
 
   private:
     //! Input

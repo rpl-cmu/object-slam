@@ -29,19 +29,19 @@ namespace oslam
 
         using SISO = SISOPipelineModule<RendererInput, RendererOutput>;
 
-        Renderer(InputQueue* p_input_queue, OutputQueue* p_output_queue);
+        Renderer(Map::Ptr map, InputQueue* input_queue, OutputQueue* output_queue);
         virtual ~Renderer() = default;
 
-        virtual OutputUniquePtr run_once(InputUniquePtr p_input) override;
+        virtual OutputUniquePtr runOnce(InputUniquePtr input) override;
 
        protected:
 
-        Timestamp m_curr_timestamp = 0;
+        Timestamp curr_timestamp_ = 0;
 
-        GlobalMap& mr_global_map;
-        cuda::ImageCuda<float, 3> mc_current_global_vertices;
-        cuda::ImageCuda<float, 3> mc_current_global_normals;
-        cuda::ImageCuda<uchar, 3> mc_current_global_colors;
+        Map::Ptr map_;
+        cuda::ImageCuda<float, 3> model_vertices_cuda_;
+        cuda::ImageCuda<float, 3> model_normals_cuda_;
+        cuda::ImageCuda<uchar, 3> model_colors_cuda_;
 
     };
 }  // namespace oslam

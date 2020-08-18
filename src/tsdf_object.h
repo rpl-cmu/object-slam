@@ -20,6 +20,7 @@
 #include "frame.h"
 #include "instance_image.h"
 #include "utils/macros.h"
+#include "utils/thread_sync_var.h"
 
 namespace oslam
 {
@@ -32,50 +33,53 @@ namespace oslam
     {
        public:
         OSLAM_POINTER_TYPEDEFS(TSDFObject);
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
         //! Constructor accepts masked depth image to size the object volume during
         //! allocation/initialization
-        TSDFObject(const Frame &r_frame, const InstanceImage &r_instance_image,
-                            const Eigen::Matrix4d &r_camera_pose = Eigen::Matrix4d::Identity(), int resolution = 64);
+        TSDFObject(const ObjectId &id,
+                   const Frame &frame,
+                   const InstanceImage &instance_image,
+                   const Eigen::Matrix4d &camera_pose = Eigen::Matrix4d::Identity(),
+                   int resolution                     = 64);
 
         virtual ~TSDFObject() = default;
 
-        [[nodiscard]] bool is_background() const { return (m_instance_image.m_label == 0); }
-        [[nodiscard]] unsigned int get_label() const { return m_instance_image.m_label; }
+        [[nodiscard]] bool isBackground() const { return (instance_image_.label_ == 0); }
+        [[nodiscard]] unsigned int getLabel() const { return instance_image_.label_; }
 
-        void integrate(const Frame &r_frame, const InstanceImage &r_instance_image, const Eigen::Matrix4d &r_camera_pose);
+        void integrate(const Frame &frame, const InstanceImage &instance_image, const Eigen::Matrix4d &camera_pose);
 
-        void raycast(open3d::cuda::ImageCuda<float, 3> &vertex, open3d::cuda::ImageCuda<float, 3> &normal,
-                     open3d::cuda::ImageCuda<uchar, 3> &color, const Eigen::Matrix4d &r_camera_pose);
+        void raycast(open3d::cuda::ImageCuda<float, 3> &vertex,
+                     open3d::cuda::ImageCuda<float, 3> &normal,
+                     open3d::cuda::ImageCuda<uchar, 3> &color,
+                     const Eigen::Matrix4d &camera_pose);
 
-        [[nodiscard]] Eigen::Matrix4d get_pose() const { return m_pose; }
-        [[nodiscard]] cuda::PinholeCameraIntrinsicCuda get_cuda_intrinsic() const { return mc_intrinsic; }
+        [[nodiscard]] Eigen::Matrix4d getPose() const { return pose_; }
+        [[nodiscard]] cuda::PinholeCameraIntrinsicCuda getIntrinsicCuda() const { return intrinsic_cuda_; }
+
+        double getExistExpectation() const { return existence_ / (existence_ + non_existence_); }
+
+        const ObjectId id_;        //!< Const public object ID Cannot be modified
+        std::hash<ObjectId> hash;  //!< Functor for obtaining hash from object ID
+
+        std::atomic_int existence_     = 1;
+        std::atomic_int non_existence_ = 1;
 
        private:
-        constexpr static int M_SUBVOLUME_RES = 16;
+        constexpr static int SUBVOLUME_RES     = 16;  //!< Each subvolume unit has 16^3 voxels
+        constexpr static float VOLUME_SIZE_SCALE = 0.9F;
+        constexpr static float TSDF_TRUNCATION_SCALE = 5.0F;
+        int resolution_;                //!< Resolution for the object volume (about 128^3 voxels)
+        InstanceImage instance_image_;  //!< Object semantic information
+        Eigen::Matrix4d pose_;          //!< Object pose w.r.t world frame T_o_w
 
-        //! Resolution for the object volume
-        int m_resolution;
+        open3d::camera::PinholeCameraIntrinsic intrinsic_;
+        open3d::cuda::PinholeCameraIntrinsicCuda intrinsic_cuda_;
 
-        //! Object semantic information
-        InstanceImage m_instance_image;
+        open3d::cuda::ScalableTSDFVolumeCuda volume_;
 
-        //! Object pose w.r.t world frame T_o_w
-        Eigen::Matrix4d m_pose;
-
-        //! Camera intrinsics required for raycasting or integration
-        open3d::camera::PinholeCameraIntrinsic m_intrinsic;
-        open3d::cuda::PinholeCameraIntrinsicCuda mc_intrinsic;
-
-        //! Object volume (Requires delayed construction)
-        std::optional<open3d::cuda::ScalableTSDFVolumeCuda> mpc_object_volume;
-
-        //! Existence and non-existence count
-        int m_existence = 1;
-        int m_non_existence = 1;
-
-        //! Protection against integration/raycasting from multiple threads
-        std::mutex m_object_mutex;
+        std::mutex mutex_;  //!< Protection against integration/raycasting from multiple threads
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_OBJECT_H */
