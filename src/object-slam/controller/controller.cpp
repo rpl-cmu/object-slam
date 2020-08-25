@@ -7,14 +7,14 @@
  *****************************************************************************/
 #include "controller.h"
 
-#include <Cuda/Common/UtilsCuda.h>
-
 #include <future>
 #include <memory>
 #include <thread>
 #include <vector>
 
-#include "map.h"
+#include <Cuda/Common/UtilsCuda.h>
+
+#include "object-slam/struct/map.h"
 
 namespace oslam
 {
@@ -74,11 +74,11 @@ namespace oslam
 
     bool Controller::setup()
     {
-        data_reader_->registerShutdownCallback([this] (Timestamp timestamp) { tracker_->setMaxTimestamp(timestamp); });
-        data_reader_->registerShutdownCallback([this] (Timestamp timestamp) { mapper_->setMaxTimestamp(timestamp); });
+        data_reader_->registerShutdownCallback([this](Timestamp timestamp) { tracker_->setMaxTimestamp(timestamp); });
+        data_reader_->registerShutdownCallback([this](Timestamp timestamp) { mapper_->setMaxTimestamp(timestamp); });
 
         //! DataReader fills the ImageTransporter Input Queue
-        auto &transport_frame_queue = transport_input_queue_;
+        auto& transport_frame_queue = transport_input_queue_;
         data_reader_->registerOutputCallback([&transport_frame_queue](const Frame::Ptr& frame) {
             if (frame->is_maskframe_)
             {
@@ -87,7 +87,7 @@ namespace oslam
         });
 
         //! DataReader also fills the Tracker Frame Queue
-        data_reader_->registerOutputCallback([this] (const Frame::Ptr& frame) { tracker_->fillFrameQueue(frame); });
+        data_reader_->registerOutputCallback([this](const Frame::Ptr& frame) { tracker_->fillFrameQueue(frame); });
         return (data_reader_ && image_transport_ && tracker_ && mapper_ && renderer_);
     }
 

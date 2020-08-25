@@ -8,10 +8,11 @@
 #ifndef OSLAM_MAPPER_PAYLOAD_H
 #define OSLAM_MAPPER_PAYLOAD_H
 
-#include "frame.h"
-#include "instance_image.h"
-#include "tracker_payload.h"
-#include "utils/pipeline_payload.h"
+#include "object-slam/utils/pipeline_payload.h"
+
+#include "object-slam/struct/frame.h"
+#include "object-slam/struct/instance_image.h"
+#include "object-slam/payload/tracker_payload.h"
 
 namespace oslam
 {

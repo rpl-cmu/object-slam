@@ -12,14 +12,13 @@
 
 #include <condition_variable>
 #include <map>
-/* #include <gtsam/nonlinear/NonlinearFactorGraph.h> */
 
-#include "frame.h"
-#include "instance_image.h"
-#include "tsdf_object.h"
-#include "utils/macros.h"
-#include "utils/thread_sync_var.h"
-#include "utils/types.h"
+#include "object-slam/utils/macros.h"
+#include "object-slam/utils/types.h"
+
+#include "object-slam/struct/frame.h"
+#include "object-slam/struct/instance_image.h"
+#include "object-slam/struct/tsdf_object.h"
 
 namespace oslam
 {
@@ -43,14 +42,14 @@ namespace oslam
         bool addObject(TSDFObject::Ptr object, bool is_active_bg = false);
         bool removeObject(const ObjectId& id);
 
-        TSDFObject::Ptr getObject(const ObjectId &id);
+        TSDFObject::Ptr getObject(const ObjectId& id);
         TSDFObject::Ptr getBackground();
 
         //! Map is a hashtable of different objects
         IdToObjectMap id_to_object_;
         ObjectId active_bg_id_;
 
-        private:
+       private:
         std::mutex mutex_;
     };
 }  // namespace oslam

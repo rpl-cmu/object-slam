@@ -1,0 +1,10 @@
+target_sources(
+  ${PROJECT_NAME}
+  PRIVATE
+  frame.h
+  instance_image.h
+  tsdf_object.h
+  tsdf_object.cpp
+  map.h
+  map.cpp
+)

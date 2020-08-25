@@ -9,14 +9,14 @@
 #define OSLAM_FRAME_H
 
 #include <Open3D/Open3D.h>
-#include <opencv2/opencv.hpp>
 #include <Eigen/Eigen>
+#include <opencv2/opencv.hpp>
 
 #include <utility>
 #include <vector>
 
-#include "utils/macros.h"
-#include "utils/pipeline_payload.h"
+#include "object-slam/utils/macros.h"
+#include "object-slam/utils/pipeline_payload.h"
 
 namespace oslam
 {
@@ -31,8 +31,11 @@ namespace oslam
         OSLAM_POINTER_TYPEDEFS(Frame);
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-        explicit Frame(Timestamp timestamp, const cv::Mat &color, const cv::Mat &depth,
-                       const camera::PinholeCameraIntrinsic &intrinsic, bool is_maskframe = false)
+        explicit Frame(Timestamp timestamp,
+                       const cv::Mat& color,
+                       const cv::Mat& depth,
+                       const camera::PinholeCameraIntrinsic& intrinsic,
+                       bool is_maskframe = false)
             : PipelinePayload(timestamp),
               width_(color.cols),
               height_(color.rows),
@@ -44,7 +47,7 @@ namespace oslam
         ~Frame() override = default;
 
         //! Copy constructor and assignment
-        Frame(const Frame &frame)
+        Frame(const Frame& frame)
             : PipelinePayload(frame.timestamp_),
               width_(frame.width_),
               height_(frame.height_),
@@ -66,8 +69,8 @@ namespace oslam
         const cv::Mat color_;
         const cv::Mat depth_;
         const camera::PinholeCameraIntrinsic intrinsic_;
-        const bool is_maskframe_ = { false }; //!< Does frame have instance segmentation
-        Eigen::Matrix4d pose_ = Eigen::Matrix4d::Identity(); //!< Pose of the frame to current local submap TODO: Required?
+        const bool is_maskframe_ = { false };                 //!< Does frame have instance segmentation
+        Eigen::Matrix4d pose_ = Eigen::Matrix4d::Identity();  //!< Pose of the frame to current local submap TODO: Required?
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_FRAME_H */

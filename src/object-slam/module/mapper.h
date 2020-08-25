@@ -14,11 +14,13 @@
 #include <limits>
 #include <vector>
 
-#include "map.h"
-#include "mapper_payload.h"
-#include "renderer_payload.h"
-#include "utils/macros.h"
-#include "utils/pipeline_module.h"
+#include "object-slam/utils/macros.h"
+#include "object-slam/utils/pipeline_module.h"
+
+#include "object-slam/struct/map.h"
+
+#include "object-slam/payload/mapper_payload.h"
+#include "object-slam/payload/renderer_payload.h"
 
 namespace oslam
 {
@@ -51,11 +53,11 @@ namespace oslam
         virtual void setMaxTimestamp(Timestamp timestamp) { max_timestamp_ = timestamp; }
 
        private:
-        constexpr static double SCORE_THRESHOLD    = 0.5;
+        constexpr static double SCORE_THRESHOLD      = 0.5;
         constexpr static float IOU_OVERLAP_THRESHOLD = 0.2F;
-        constexpr static int MASK_AREA_THRESHOLD   = 2500;
-        constexpr static int BACKGROUND_RESOLUTION = 256;
-        constexpr static int OBJECT_RESOLUTION     = 128;
+        constexpr static int MASK_AREA_THRESHOLD     = 2500;
+        constexpr static int BACKGROUND_RESOLUTION   = 256;
+        constexpr static int OBJECT_RESOLUTION       = 128;
 
         virtual InputUniquePtr getInputPacket() override;
 
@@ -69,8 +71,8 @@ namespace oslam
                                const Eigen::Matrix4d& camera_pose);
 
         static InstanceImages::const_iterator associateObjects(const cv::Mat& object_raycast,
-                                                        const InstanceImages& instance_images,
-                                                        std::vector<bool>& instance_matches);
+                                                               const InstanceImages& instance_images,
+                                                               std::vector<bool>& instance_matches);
 
         Map::Ptr map_;
         ObjectId active_bg_id_;

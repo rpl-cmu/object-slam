@@ -14,9 +14,9 @@
 #include <opencv2/core/mat.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include "utils/macros.h"
-#include "utils/pipeline_payload.h"
-#include "utils/types.h"
+#include "object-slam/utils/macros.h"
+#include "object-slam/utils/pipeline_payload.h"
+#include "object-slam/utils/types.h"
 
 namespace oslam
 {

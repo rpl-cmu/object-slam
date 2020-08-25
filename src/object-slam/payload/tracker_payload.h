@@ -8,11 +8,10 @@
 #ifndef OSLAM_TRACKER_PAYLOAD_H
 #define OSLAM_TRACKER_PAYLOAD_H
 
-/* #include <gtsam/geometry/Pose3.h> */
+#include "object-slam/utils/pipeline_payload.h"
 
-#include "frame.h"
-#include "instance_image.h"
-#include "utils/pipeline_payload.h"
+#include "object-slam/struct/frame.h"
+#include "object-slam/struct/instance_image.h"
 
 namespace oslam
 {

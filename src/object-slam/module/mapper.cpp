@@ -18,8 +18,8 @@
 #include <opencv2/rgbd/depth.hpp>
 #include <utility>
 
-#include "instance_image.h"
-#include "utils/utils.h"
+#include "object-slam/utils/utils.h"
+#include "object-slam/struct/instance_image.h"
 
 namespace oslam
 {
@@ -114,7 +114,7 @@ namespace oslam
             if (mapper_payload.tracker_status_ == TrackerStatus::VALID)
             {
                 const Eigen::Matrix4d& camera_pose = relative_camera_pose;
-                T_camera_to_world_.emplace_back(camera_pose);
+                T_camera_to_world_.push_back(camera_pose);
 
                 // Add camera pose and factor to the graph
                 TSDFObject::Ptr bg = createBackground(frame, camera_pose);
@@ -123,7 +123,7 @@ namespace oslam
 
                 // Prior noise of 0.01 metres (x,y,z) and 0.01 rad in (alpha, beta, gamma)
                 auto prior_noise = noiseModel::Diagonal::Sigmas(Vector6::Constant(0.01));
-                spdlog::debug("Background object pose:\n {}", bg->getPose());
+                spdlog::debug("Background object pose:\n{}", bg->getPose());
                 object_pose_graph_.emplace_shared<PriorFactor<Pose3>>(bg_key, Pose3(bg->getPose()), prior_noise);
                 spdlog::debug("Created background object and emplaced in graph");
                 map_->addObject(bg, true);
@@ -154,7 +154,7 @@ namespace oslam
             if (mapper_payload.tracker_status_ == TrackerStatus::VALID)
             {
                 const Eigen::Matrix4d camera_pose = T_camera_to_world_.back() * relative_camera_pose;
-                T_camera_to_world_.emplace_back(camera_pose);
+                T_camera_to_world_.push_back(camera_pose);
 
                 TSDFObject::Ptr active_bg = map_->getBackground();
                 active_bg->integrate(frame, InstanceImage(frame.width_, frame.height_), camera_pose);
@@ -162,11 +162,10 @@ namespace oslam
                 std::vector<std::pair<ObjectId, cv::Mat>> object_raycasts;
                 raycastMapObjects(object_raycasts, frame, camera_pose);
 
-                //! Project the masks to current frame
+                // Project the masks to current frame
                 auto T_maskcamera_to_world             = T_camera_to_world_.at(prev_maskframe_timestamp_ - 1);
                 auto T_camera_to_world                 = T_camera_to_world_.back();
                 Eigen::Matrix4d T_maskcamera_to_camera = T_camera_to_world.inverse() * T_maskcamera_to_world;
-
                 cuda::TransformCuda T_maskcamera_to_camera_cuda;
                 T_maskcamera_to_camera_cuda.FromEigen(T_maskcamera_to_camera);
                 cuda::PinholeCameraIntrinsicCuda intrinsic_cuda(frame.intrinsic_);
@@ -197,12 +196,7 @@ namespace oslam
                     BoundingBox proj_bbox =
                         transform_project_bbox(instance_image.bbox_, depthf, frame.intrinsic_, T_maskcamera_to_camera);
 
-#ifdef OSLAM_DEBUG_VIS
-                    /* cv::imshow("Input instance image mask", instance_image.maskb_); */
-                    /* cv::imshow("Source projected mask", proj_mask); */
-#endif
-                    InstanceImage proj_instance_image(proj_mask, proj_bbox, instance_image.label_, instance_image.score_);
-                    frame_instance_images.push_back(proj_instance_image);
+                    frame_instance_images.emplace_back(proj_mask, proj_bbox, instance_image.label_, instance_image.score_);
                 }
 
                 for (const auto& object_pair : object_raycasts)
@@ -213,7 +207,6 @@ namespace oslam
 
                     auto iter = associateObjects(object_raycast, frame_instance_images, frame_instance_matches);
 
-                    // Did not match
                     if (iter == frame_instance_images.end())
                     {
                         //! Increment the non-existence count
@@ -226,11 +219,11 @@ namespace oslam
                     }
                 }
 
+                // Create new objects for unmatched instance images
                 for (size_t i = 0; i < frame_instance_matches.size(); i++)
                 {
                     if (!frame_instance_matches.at(i))
                     {
-                        // Create new object instance
                         auto object = createObject(frame, frame_instance_images.at(i), camera_pose);
                         if (!object)
                         {
@@ -254,6 +247,7 @@ namespace oslam
             mapper_status = MapperStatus::VALID;
         }
 
+        // Evaluate remove objects with very low existence probability
         std::vector<ObjectId> to_delete_objects;
         for (const auto& object_pair : map_->id_to_object_)
         {
@@ -279,13 +273,18 @@ namespace oslam
             map_->removeObject(object_id);
         }
 
+        auto active_bg = map_->getBackground();
+        spdlog::info("Obtained background");
+        double vis_ratio = active_bg->getVisibilityRatio(frame.timestamp_);
+        spdlog::info("Visibility Ratio: {}", vis_ratio);
+
         return std::make_unique<RendererInput>(curr_timestamp_, mapper_status, frame, T_camera_to_world_.back());
     }
 
     TSDFObject::Ptr Mapper::createBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose)
     {
         using namespace open3d;
-        //! Create default instance image for background
+        // Create default instance image for background
         InstanceImage background_instance(frame.width_, frame.height_);
         ObjectId background_id(0, frame.timestamp_, BoundingBox({ 0, 0, frame.width_ - 1, frame.height_ - 1 }));
         TSDFObject::Ptr background =
@@ -299,7 +298,6 @@ namespace oslam
                                          const InstanceImage& instance_image,
                                          const Eigen::Matrix4d& camera_pose)
     {
-        // Don't allow other objects to be added to vector
         if (instance_image.score_ < SCORE_THRESHOLD)
         {
             spdlog::warn(
@@ -312,9 +310,9 @@ namespace oslam
             spdlog::warn("Object {} width score {} is too small. Not added", instance_image.label_, instance_image.score_);
             return nullptr;
         }
+
         Eigen::Vector2i object_center = Eigen::Vector2i((instance_image.bbox_[0] + instance_image.bbox_[2]) / 2,
                                                         (instance_image.bbox_[1] + instance_image.bbox_[3]) / 2);
-
         if (!(object_center[0] >= InstanceImage::BORDER_WIDTH &&
               object_center[0] < frame.width_ - InstanceImage::BORDER_WIDTH &&
               object_center[1] >= InstanceImage::BORDER_WIDTH &&
@@ -336,6 +334,7 @@ namespace oslam
                                    const Eigen::Matrix4d& camera_pose)
     {
         using namespace open3d;
+        object_raycasts.reserve(map_->id_to_object_.size());
         for (const auto& object_pair : map_->id_to_object_)
         {
             const ObjectId& id     = object_pair.first;
@@ -365,8 +364,9 @@ namespace oslam
                                                             const InstanceImages& instance_images,
                                                             std::vector<bool>& instance_matches)
     {
-        cv::Mat gray, mask;
+        cv::Mat gray;
         cv::cvtColor(object_raycast, gray, cv::COLOR_BGR2GRAY);
+        cv::Mat mask;
         cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY);
 
         auto iter = instance_images.begin();

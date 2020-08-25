@@ -15,11 +15,12 @@
 #include <vector>
 #include <zmq.hpp>
 
-#include "frame.h"
-#include "instance_image.h"
-#include "utils/macros.h"
-#include "utils/pipeline_module.h"
-#include "utils/thread_safe_queue.h"
+#include "object-slam/utils/macros.h"
+#include "object-slam/utils/pipeline_module.h"
+#include "object-slam/utils/thread_safe_queue.h"
+
+#include "object-slam/struct/frame.h"
+#include "object-slam/struct/instance_image.h"
 
 static constexpr auto SERVER_ENDPOINT = "tcp://localhost:5555";
 

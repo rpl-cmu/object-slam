@@ -17,10 +17,11 @@
 #include <mutex>
 #include <opencv2/core/mat.hpp>
 
-#include "frame.h"
-#include "instance_image.h"
-#include "utils/macros.h"
-#include "utils/thread_sync_var.h"
+#include "object-slam/utils/macros.h"
+#include "object-slam/utils/thread_sync_var.h"
+
+#include "object-slam/struct/frame.h"
+#include "object-slam/struct/instance_image.h"
 
 namespace oslam
 {
@@ -58,7 +59,9 @@ namespace oslam
         [[nodiscard]] Eigen::Matrix4d getPose() const { return pose_; }
         [[nodiscard]] cuda::PinholeCameraIntrinsicCuda getIntrinsicCuda() const { return intrinsic_cuda_; }
 
-        double getExistExpectation() const { return existence_ / (existence_ + non_existence_); }
+        [[nodiscard]] double getExistExpectation() const { return existence_ / (existence_ + non_existence_); }
+
+        [[nodiscard]] double getVisibilityRatio(Timestamp timestamp) const;
 
         const ObjectId id_;        //!< Const public object ID Cannot be modified
         std::hash<ObjectId> hash;  //!< Functor for obtaining hash from object ID
@@ -67,9 +70,10 @@ namespace oslam
         std::atomic_int non_existence_ = 1;
 
        private:
-        constexpr static int SUBVOLUME_RES     = 16;  //!< Each subvolume unit has 16^3 voxels
-        constexpr static float VOLUME_SIZE_SCALE = 0.9F;
-        constexpr static float TSDF_TRUNCATION_SCALE = 5.0F;
+        constexpr static int SUBVOLUME_RES                = 16;  //!< Each subvolume unit has 16^3 voxels
+        constexpr static float VOLUME_SIZE_SCALE          = 0.9F;
+        constexpr static float TSDF_TRUNCATION_SCALE      = 5.0F;
+        constexpr static int RETROSPECT_VISIBILITY_THRESH = 5;
         int resolution_;                //!< Resolution for the object volume (about 128^3 voxels)
         InstanceImage instance_image_;  //!< Object semantic information
         Eigen::Matrix4d pose_;          //!< Object pose w.r.t world frame T_o_w

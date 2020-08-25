@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-#include "frame.h"
+#include "object-slam/struct/frame.h"
 
 namespace oslam
 {

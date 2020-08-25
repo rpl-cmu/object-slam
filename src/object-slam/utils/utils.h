@@ -13,7 +13,7 @@
 #include <Eigen/Eigen>
 #include <limits>
 
-#include "../instance_image.h"
+#include "object-slam/struct/instance_image.h"
 
 namespace oslam
 {

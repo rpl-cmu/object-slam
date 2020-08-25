@@ -9,7 +9,7 @@
 
 #include <CLI/CLI.hpp>
 
-#include "controller.h"
+#include "controller/controller.h"
 
 int main(int argc, char *argv[])
 {

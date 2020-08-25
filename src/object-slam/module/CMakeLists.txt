@@ -1,0 +1,12 @@
+target_sources(
+  ${PROJECT_NAME}
+  PRIVATE
+  image_transport.h
+  image_transport.cpp
+  tracker.h
+  tracker.cpp
+  mapper.h
+  mapper.cpp
+  renderer.h
+  renderer.cpp
+)

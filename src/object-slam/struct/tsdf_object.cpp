@@ -112,7 +112,7 @@ namespace oslam
         open3d::cuda::ImageCuda<uchar, 1> mask_cuda;
         mask_cuda.Upload(instance_image.maskb_);
 
-        volume_.Integrate(object_rgbd_cuda, intrinsic_cuda_, camera_to_world_cuda, mask_cuda);
+        volume_.Integrate(object_rgbd_cuda, intrinsic_cuda_, camera_to_world_cuda, static_cast<int>(frame.timestamp_), mask_cuda);
 
 #ifdef OSLAM_DEBUG_VIS
         if (frame.timestamp_ % 100 == 0)
@@ -137,6 +137,14 @@ namespace oslam
         open3d::cuda::TransformCuda camera_to_object_cuda;
         camera_to_object_cuda.FromEigen(camera_pose);
         volume_.RayCasting(vertex, normal, color, intrinsic_cuda_, camera_to_object_cuda);
+    }
+
+    double TSDFObject::getVisibilityRatio(Timestamp timestamp) const
+    {
+        int visible_blocks = volume_.GetVisibleSubvolumesCount(static_cast<int>(timestamp), RETROSPECT_VISIBILITY_THRESH);
+        int total_blocks = volume_.GetTotalAllocatedSubvolumesCount();
+        spdlog::info("Visible blocks: {}, total_blocks: {}", visible_blocks, total_blocks);
+        return double(visible_blocks) / double(total_blocks);
     }
 
 }  // namespace oslam

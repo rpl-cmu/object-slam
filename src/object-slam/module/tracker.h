@@ -19,12 +19,14 @@
 #include <thread>
 #include <vector>
 
-#include "map.h"
-#include "renderer_payload.h"
-#include "tracker_payload.h"
-#include "utils/macros.h"
-#include "utils/pipeline_module.h"
-#include "utils/thread_safe_queue.h"
+#include "object-slam/utils/macros.h"
+#include "object-slam/utils/pipeline_module.h"
+#include "object-slam/utils/thread_safe_queue.h"
+
+#include "object-slam/payload/renderer_payload.h"
+#include "object-slam/payload/tracker_payload.h"
+
+#include "object-slam/struct/map.h"
 
 namespace oslam
 {
@@ -58,7 +60,7 @@ namespace oslam
 
         //! Input Queues which are to be synchronised
         ThreadsafeQueue<Frame::UniquePtr> frame_queue_;
-        RendererOutputQueue *renderer_output_queue_;
+        RendererOutputQueue* renderer_output_queue_;
 
         Timestamp curr_timestamp_ = 0;
         Timestamp max_timestamp_  = std::numeric_limits<Timestamp>::max();

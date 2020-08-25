@@ -1,0 +1,11 @@
+target_sources(
+  ${PROJECT_NAME}
+  PRIVATE
+  macros.h
+  types.h
+  timer.h
+  pipeline_module.h
+  pipeline_module.cpp
+  thread_safe_queue.h
+  queue_synchroniser.h
+)

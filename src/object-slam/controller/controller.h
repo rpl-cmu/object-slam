@@ -14,14 +14,15 @@
 #include <memory>
 #include <zmq.hpp>
 
-#include "data_provider.h"
-#include "data_reader.h"
-#include "image_transport.h"
-#include "map.h"
-#include "mapper.h"
-#include "renderer.h"
-#include "tracker.h"
-#include "utils/macros.h"
+#include "object-slam/struct/map.h"
+#include "object-slam/utils/macros.h"
+
+#include "object-slam/module/image_transport.h"
+#include "object-slam/module/mapper.h"
+#include "object-slam/module/renderer.h"
+#include "object-slam/module/tracker.h"
+#include "object-slam/reader/data_provider.h"
+#include "object-slam/reader/data_reader.h"
 
 namespace oslam
 {

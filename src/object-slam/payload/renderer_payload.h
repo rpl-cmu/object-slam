@@ -12,9 +12,10 @@
 
 #include <opencv2/core/types.hpp>
 
-#include "frame.h"
-#include "utils/pipeline_payload.h"
-#include "utils/types.h"
+#include "object-slam/utils/pipeline_payload.h"
+#include "object-slam/utils/types.h"
+
+#include "object-slam/struct/frame.h"
 
 namespace oslam
 {
@@ -31,11 +32,10 @@ namespace oslam
        public:
         OSLAM_POINTER_TYPEDEFS(RendererInput);
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-        RendererInput(
-            Timestamp timestamp,
-            const MapperStatus& mapper_status,
-            const Frame& frame,
-            const Eigen::Matrix4d& camera_pose)
+        RendererInput(Timestamp timestamp,
+                      const MapperStatus& mapper_status,
+                      const Frame& frame,
+                      const Eigen::Matrix4d& camera_pose)
             : PipelinePayload(timestamp), mapper_status_(mapper_status), frame_(frame), camera_pose_(camera_pose)
         {
         }

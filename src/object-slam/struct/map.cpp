@@ -20,8 +20,9 @@
 #include <opencv2/rgbd/depth.hpp>
 #include <vector>
 
-#include "instance_image.h"
-#include "utils/utils.h"
+#include "object-slam/utils/utils.h"
+
+#include "object-slam/struct/instance_image.h"
 
 namespace oslam
 {

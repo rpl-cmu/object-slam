@@ -7,20 +7,21 @@
  *****************************************************************************/
 #include "tracker.h"
 
+#include <cstdlib>
+#include <memory>
+
 #include <Cuda/Common/UtilsCuda.h>
 #include <Cuda/Geometry/GeometryClasses.h>
 #include <Cuda/OSLAMUtils/SegmentationCuda.h>
 #include <Cuda/Odometry/RGBDOdometryCuda.h>
 
-#include <cstdlib>
-#include <memory>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/opencv.hpp>
 #include <opencv2/rgbd/depth.hpp>
 
-#include "utils/utils.h"
+#include "object-slam/utils/utils.h"
 
 namespace oslam
 {
@@ -137,6 +138,10 @@ namespace oslam
             auto odo_finish_time = Timer::toc(odo_start_time).count();
             spdlog::debug("Odometry took {} ms", odo_finish_time);
             camera_pose = prev_camera_pose * relative_camera_pose;
+
+            cv::imshow("Source frame", frame.color_);
+            cv::imshow("Model Color map", model_color_map);
+            cv::waitKey(1);
         }
 
         spdlog::debug("Current camera pose: \n{}\n", camera_pose);
