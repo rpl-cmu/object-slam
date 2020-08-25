@@ -9,7 +9,7 @@
 
 #include <CLI/CLI.hpp>
 
-#include "controller/controller.h"
+#include "object-slam/controller/controller.h"
 
 int main(int argc, char *argv[])
 {
