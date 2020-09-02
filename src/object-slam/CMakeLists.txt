@@ -1,8 +1,11 @@
-# --------- Dependencies ------------
+include(${PROJECT_SOURCE_DIR}/cmake/Functions.cmake)
+# --------- Dependencies -----------------------------------------
 find_package(GTSAM REQUIRED)
 
 # include Open3D library by downloading if not already present
 include(${PROJECT_SOURCE_DIR}/cmake/Open3D.cmake)
+
+# --------- Create object-slam library ----------------------------
 add_library(${PROJECT_NAME})
 
 add_subdirectory(utils)
@@ -11,7 +14,7 @@ add_subdirectory(controller)
 add_subdirectory(reader)
 add_subdirectory(module)
 
-# Special handling to suppress warnings from Eigen headers
+# Treat Eigen as system library to suppress warnings
 target_include_directories(
   ${PROJECT_NAME} PUBLIC
   ${PROJECT_SOURCE_DIR}/src/
@@ -20,7 +23,7 @@ target_include_directories(
   ${CMAKE_BINARY_DIR}
 )
 
-target_link_libraries(
+target_link_libraries_system(
   ${PROJECT_NAME} PUBLIC
   project_options
   project_warnings
@@ -40,6 +43,7 @@ target_link_libraries(
   Open3D::Open3DCuda
   gtsam
 )
+
 
 # TODO: Is this Required?
 if(WITH_OPENMP)

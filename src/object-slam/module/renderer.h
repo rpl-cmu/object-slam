@@ -21,26 +21,28 @@ namespace oslam
      *
      *  Detailed description
      */
-    class Renderer : public SISOPipelineModule<RendererInput, RendererOutput>
+    class Renderer : public SIMOPipelineModule<RendererInput, RendererOutput>
     {
        public:
         OSLAM_POINTER_TYPEDEFS(Renderer);
         OSLAM_DELETE_COPY_CONSTRUCTORS(Renderer);
+        OSLAM_DELETE_MOVE_CONSTRUCTORS(Renderer);
 
-        using SISO = SISOPipelineModule<RendererInput, RendererOutput>;
+        using SIMO = SIMOPipelineModule<RendererInput, RendererOutput>;
 
-        Renderer(Map::Ptr map, InputQueue* input_queue, OutputQueue* output_queue);
+        Renderer(const Map::Ptr& map, InputQueue* input_queue);
         virtual ~Renderer() = default;
 
         virtual OutputUniquePtr runOnce(InputUniquePtr input) override;
 
-       protected:
+       private:
         Timestamp curr_timestamp_ = 0;
 
         Map::Ptr map_;
         cuda::ImageCuda<float, 3> model_vertices_cuda_;
         cuda::ImageCuda<float, 3> model_normals_cuda_;
         cuda::ImageCuda<uchar, 3> model_colors_cuda_;
+
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_RENDERER_H */

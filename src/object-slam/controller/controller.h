@@ -18,9 +18,10 @@
 #include "object-slam/utils/macros.h"
 
 #include "object-slam/module/image_transport.h"
+#include "object-slam/module/tracker.h"
 #include "object-slam/module/mapper.h"
 #include "object-slam/module/renderer.h"
-#include "object-slam/module/tracker.h"
+#include "object-slam/module/display.h"
 #include "object-slam/reader/data_provider.h"
 #include "object-slam/reader/data_reader.h"
 
@@ -57,12 +58,12 @@ namespace oslam
         Tracker::Ptr tracker_;
         Mapper::Ptr mapper_;
         Renderer::Ptr renderer_;
+        Display::Ptr display_;
 
         ImageTransporter::InputQueue transport_input_queue_;
         ImageTransporter::OutputQueue transport_output_queue_;
         Tracker::OutputQueue tracker_output_queue_;
         Renderer::InputQueue renderer_input_queue_;
-        Renderer::OutputQueue renderer_output_queue_;
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_CONTROLLER_H */

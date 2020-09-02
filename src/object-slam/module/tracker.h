@@ -40,13 +40,15 @@ namespace oslam
         OSLAM_DELETE_COPY_CONSTRUCTORS(Tracker);
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-        using MISO                = MISOPipelineModule<TrackerInput, TrackerOutput>;
-        using RendererOutputQueue = ThreadsafeQueue<RendererOutput::UniquePtr>;
+        using MISO            = MISOPipelineModule<TrackerInput, TrackerOutput>;
+        using ModelInputQueue = ThreadsafeQueue<Model::UniquePtr>;
+        using FrameInputQueue = ThreadsafeQueue<Frame::UniquePtr>;
 
-        Tracker(RendererOutputQueue* renderer_output_queue, OutputQueue* output_queue);
+        Tracker(OutputQueue* output_queue);
         virtual ~Tracker() = default;
 
-        void fillFrameQueue(Frame::Ptr p_frame) { frame_queue_.push(std::make_unique<Frame>(*p_frame)); }
+        void fillFrameQueue(Frame::UniquePtr frame) { frame_queue_.push(std::move(frame)); }
+        void fillModelQueue(Model::UniquePtr model_payload) { model_queue_.push(std::move(model_payload)); }
 
         virtual OutputUniquePtr runOnce(InputUniquePtr input) override;
 
@@ -59,8 +61,8 @@ namespace oslam
         virtual void shutdownQueues() override;
 
         //! Input Queues which are to be synchronised
-        ThreadsafeQueue<Frame::UniquePtr> frame_queue_;
-        RendererOutputQueue* renderer_output_queue_;
+        FrameInputQueue frame_queue_;
+        ModelInputQueue model_queue_;
 
         Timestamp curr_timestamp_ = 0;
         Timestamp max_timestamp_  = std::numeric_limits<Timestamp>::max();

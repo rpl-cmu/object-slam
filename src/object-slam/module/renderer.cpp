@@ -9,8 +9,8 @@
 
 namespace oslam
 {
-    Renderer::Renderer(Map::Ptr map, InputQueue* input_queue, OutputQueue* output_queue)
-        : SISO(input_queue, output_queue, "Renderer"), map_(map)
+    Renderer::Renderer(const Map::Ptr& map, InputQueue* input_queue)
+        : SIMO(input_queue, "Renderer"), map_(map)
     {
     }
 
@@ -47,11 +47,8 @@ namespace oslam
             cv::Mat vertices  = model_vertices_cuda_.DownloadMat();
             cv::Mat normals   = model_normals_cuda_.DownloadMat();
 
-#ifdef OSLAM_DEBUG_VIS
-            /* cv::imshow("Color map", color_map); */
-            /* cv::imshow("Source image", frame.color_); */
-#endif
-            spdlog::debug("Returning render output");
+            //! TODO: Mesh output should be part of RendererOutput
+
             return std::make_unique<RendererOutput>(curr_timestamp_ + 1, color_map, vertices, normals);
         }
         return nullptr;
