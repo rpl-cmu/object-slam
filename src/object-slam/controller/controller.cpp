@@ -94,12 +94,16 @@ namespace oslam
         data_reader_->registerOutputCallback(
             [this](Frame::Ptr frame) { display_->fillFrameQueue(std::make_unique<Frame>(*frame)); });
 
-
         renderer_->registerOutputCallback([this](const RendererOutput::Ptr& render_payload) {
             tracker_->fillModelQueue(std::make_unique<Model>(
                 render_payload->timestamp_, render_payload->colors_, render_payload->vertices_, render_payload->normals_));
         });
 
+        renderer_->registerOutputCallback([this](const RendererOutput::Ptr& render_payload) {
+            std::vector<NamedImage> display_img;
+            display_->fillDisplay3dQueue(
+                std::make_unique<DisplayInput>(render_payload->timestamp_, display_img, render_payload->widgets_map_));
+        });
 
         return (data_reader_ && image_transport_ && tracker_ && mapper_ && renderer_);
     }

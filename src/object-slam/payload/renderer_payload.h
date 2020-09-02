@@ -16,6 +16,7 @@
 #include "object-slam/utils/types.h"
 
 #include "object-slam/struct/frame.h"
+#include "object-slam/payload/display_payload.h"
 
 namespace oslam
 {
@@ -62,6 +63,7 @@ namespace oslam
         const cv::Mat colors_;
         const cv::Mat vertices_;
         const cv::Mat normals_;
+        std::map<std::string, WidgetPtr> widgets_map_;
     };
 
 }  // namespace oslam

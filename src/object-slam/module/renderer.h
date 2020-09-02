@@ -8,10 +8,12 @@
 #ifndef OSLAM_RENDERER_H
 #define OSLAM_RENDERER_H
 
+#include <deque>
 #include "object-slam/utils/macros.h"
 #include "object-slam/utils/pipeline_module.h"
 
 #include "object-slam/payload/renderer_payload.h"
+#include "object-slam/payload/display_payload.h"
 #include "object-slam/struct/map.h"
 
 namespace oslam
@@ -24,6 +26,7 @@ namespace oslam
     class Renderer : public SIMOPipelineModule<RendererInput, RendererOutput>
     {
        public:
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
         OSLAM_POINTER_TYPEDEFS(Renderer);
         OSLAM_DELETE_COPY_CONSTRUCTORS(Renderer);
         OSLAM_DELETE_MOVE_CONSTRUCTORS(Renderer);
@@ -36,12 +39,17 @@ namespace oslam
         virtual OutputUniquePtr runOnce(InputUniquePtr input) override;
 
        private:
+        WidgetPtr render3dTrajectory();
+        WidgetPtr render3dFrustumTraj(const Eigen::Matrix3d& intrinsic_matrix, const size_t& num_prev_frustums);
+        WidgetPtr render3dFrustumWithColorMap(const Eigen::Matrix3d& intrinsic_matrix, const cv::Mat& color_map);
         Timestamp curr_timestamp_ = 0;
 
         Map::Ptr map_;
         cuda::ImageCuda<float, 3> model_vertices_cuda_;
         cuda::ImageCuda<float, 3> model_normals_cuda_;
         cuda::ImageCuda<uchar, 3> model_colors_cuda_;
+
+        std::vector<cv::Affine3d> camera_trajectory_3d_;
 
     };
 }  // namespace oslam

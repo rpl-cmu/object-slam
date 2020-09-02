@@ -36,7 +36,6 @@ namespace oslam
         using MISO                = MISOPipelineModule<DisplayInput, NullPipelinePayload>;
         using DisplayInputQueue   = ThreadsafeQueue<DisplayInput::UniquePtr>;
         using FrameInputQueue     = ThreadsafeQueue<Frame::UniquePtr>;
-        using RendererOutputQueue = ThreadsafeQueue<RendererOutput::UniquePtr>;
 
         explicit Display(const std::string& window_name);
         virtual ~Display();
@@ -44,6 +43,10 @@ namespace oslam
         virtual OutputUniquePtr runOnce(InputUniquePtr input) override;
 
         inline void fillFrameQueue(Frame::UniquePtr frame) { frame_queue_.push(std::move(frame)); }
+        inline void fillDisplay3dQueue(DisplayInput::UniquePtr display_input)
+        {
+            display_3d_queue_.push(std::move(display_input));
+        }
 
         virtual bool hasWork() const override { return (curr_timestamp_ < max_timestamp_); }
         inline void setMaxTimestamp(Timestamp timestamp) { max_timestamp_ = timestamp; }
@@ -54,6 +57,7 @@ namespace oslam
         virtual void shutdownQueues() override;
 
         void show2dWindow(const std::vector<NamedImage>& images_to_display) const;
+        void show3dWindow(const WidgetsMap& widgets_map);
 
         Timestamp curr_timestamp_ = 0;
         Timestamp max_timestamp_  = std::numeric_limits<Timestamp>::max();
@@ -62,8 +66,8 @@ namespace oslam
         cv::viz::Color background_color_;
 
         FrameInputQueue frame_queue_;
-        RendererOutputQueue render_queue_;
-        /* DisplayInputQueue* display_input_queue_; */
+        DisplayInputQueue display_3d_queue_;
+        DisplayInputQueue display_input_queue_;
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_DISPLAY_H */
