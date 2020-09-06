@@ -18,7 +18,7 @@
 namespace oslam
 {
     inline Eigen::Vector2d project_point(const Eigen::Vector3d& r_point3d,
-                                  const open3d::camera::PinholeCameraIntrinsic& r_intrinsic)
+                                         const open3d::camera::PinholeCameraIntrinsic& r_intrinsic)
     {
         auto fx = r_intrinsic.intrinsic_matrix_(0, 0);
         auto fy = r_intrinsic.intrinsic_matrix_(1, 1);
@@ -29,7 +29,8 @@ namespace oslam
     }
 
     inline Eigen::Vector3d inverse_project_point(const Eigen::Vector2i& r_point2,
-                                          const open3d::camera::PinholeCameraIntrinsic& r_intrinsic, float depth)
+                                                 const open3d::camera::PinholeCameraIntrinsic& r_intrinsic,
+                                                 float depth)
     {
         auto fx = r_intrinsic.intrinsic_matrix_(0, 0);
         auto fy = r_intrinsic.intrinsic_matrix_(1, 1);
@@ -37,17 +38,20 @@ namespace oslam
         auto cy = r_intrinsic.intrinsic_matrix_(1, 2);
 
         return Eigen::Vector3d((static_cast<double>(depth) * (r_point2(0) - cx)) / fx,
-                               (static_cast<double>(depth) * (r_point2(1) - cy)) / fy, depth);
+                               (static_cast<double>(depth) * (r_point2(1) - cy)) / fy,
+                               depth);
     }
 
     inline bool is_valid_depth(float depth)
     {
         if (std::isnan(depth))
             return false;
-        return (depth >= 0) && (depth <= 3.0f);
+        return (depth >= 0.0F) && (depth <= 4.0F);
     }
 
-    inline BoundingBox transform_project_bbox(const BoundingBox& bbox, const cv::Mat& r_depth,
+    inline bool transform_project_bbox(const BoundingBox& bbox,
+                                       BoundingBox& transformed_bbox,
+                                       const cv::Mat& r_depth,
                                        const open3d::camera::PinholeCameraIntrinsic& r_intrinsic,
                                        const Eigen::Matrix4d& r_transform)
     {
@@ -57,10 +61,11 @@ namespace oslam
         float depth_left_top     = r_depth.at<float>(bbox[1], bbox[0]);
         float depth_right_bottom = r_depth.at<float>(bbox[3], bbox[2]);
 
+        transformed_bbox = bbox;
         if (!is_valid_depth(depth_left_top) || !is_valid_depth(depth_right_bottom))
         {
             spdlog::warn("Depth at left point: {}, Depth at right point: {}\n", depth_left_top, depth_right_bottom);
-            return bbox;
+            return false;
         }
         Eigen::Vector3d left_top_3dpoint =
             inverse_project_point(left_top_point, r_intrinsic, r_depth.at<float>(bbox[1], bbox[0]));
@@ -77,8 +82,11 @@ namespace oslam
 
         Eigen::Vector2d left_top     = project_point(tform_left_top.head(3), r_intrinsic);
         Eigen::Vector2d right_bottom = project_point(tform_right_bottom.head(3), r_intrinsic);
-        return BoundingBox({ int(std::round(left_top(0))), int(std::round(left_top(1))), int(std::round(right_bottom(0))),
-                             int(std::round(right_bottom(1))) });
+        transformed_bbox             = BoundingBox({ int(std::round(left_top(0))),
+                                         int(std::round(left_top(1))),
+                                         int(std::round(right_bottom(0))),
+                                         int(std::round(right_bottom(1))) });
+        return true;
     }
 
 }  // namespace oslam

@@ -143,7 +143,7 @@ namespace oslam
     {
         int visible_blocks = volume_.GetVisibleSubvolumesCount(static_cast<int>(timestamp), RETROSPECT_VISIBILITY_THRESH);
         int total_blocks = volume_.GetTotalAllocatedSubvolumesCount();
-        spdlog::info("Visible blocks: {}, total_blocks: {}", visible_blocks, total_blocks);
+        spdlog::debug("Visible blocks: {}, total_blocks: {}", visible_blocks, total_blocks);
         return double(visible_blocks) / double(total_blocks);
     }
 

@@ -54,14 +54,12 @@ namespace oslam
 
             //! TODO: Mesh output should be part of RendererOutput
             WidgetPtr traj_widget    = render3dTrajectory();
-            WidgetPtr traj_frustum_widget = render3dFrustumTraj(intrinsic_matrix, 10);
             WidgetPtr frustum_widget = render3dFrustumWithColorMap(intrinsic_matrix, color_map);
 
             RendererOutput::UniquePtr render_output =
                 std::make_unique<RendererOutput>(curr_timestamp_ + 1, color_map, vertices, normals);
 
             render_output->widgets_map_.emplace("Trajectory", std::move(traj_widget));
-            render_output->widgets_map_.emplace("Trajectory Frustums", std::move(traj_frustum_widget));
             render_output->widgets_map_.emplace("Frustum", std::move(frustum_widget));
             return render_output;
         }

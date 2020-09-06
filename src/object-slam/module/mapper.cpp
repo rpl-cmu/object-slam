@@ -18,8 +18,8 @@
 #include <opencv2/rgbd/depth.hpp>
 #include <utility>
 
-#include "object-slam/utils/utils.h"
 #include "object-slam/struct/instance_image.h"
+#include "object-slam/utils/utils.h"
 
 namespace oslam
 {
@@ -171,8 +171,9 @@ namespace oslam
                 cuda::PinholeCameraIntrinsicCuda intrinsic_cuda(frame.intrinsic_);
 
                 InstanceImages frame_instance_images;
+                std::vector<bool> frame_instance_matches;
                 frame_instance_images.reserve(instance_images.size());
-                std::vector<bool> frame_instance_matches(instance_images.size(), false);
+                frame_instance_matches.reserve(instance_images.size());
                 for (const auto& instance_image : instance_images)
                 {
                     //! Skip for background object
@@ -189,14 +190,18 @@ namespace oslam
                     cuda::ImageCuda<float, 1> depth;
                     depth.Upload(depthf);
 
+                    // TODO: Use geometric segmentation
                     auto proj_mask_cuda = cuda::SegmentationCuda::TransformAndProject(
                         src_mask, depth, T_maskcamera_to_camera_cuda, intrinsic_cuda);
                     cv::Mat proj_mask = proj_mask_cuda.DownloadMat();
 
-                    BoundingBox proj_bbox =
-                        transform_project_bbox(instance_image.bbox_, depthf, frame.intrinsic_, T_maskcamera_to_camera);
+                    BoundingBox proj_bbox;
+                    transform_project_bbox(
+                        instance_image.bbox_, proj_bbox, depthf, frame.intrinsic_, T_maskcamera_to_camera);
 
+                    cv::imshow("Projected mask", proj_mask);
                     frame_instance_images.emplace_back(proj_mask, proj_bbox, instance_image.label_, instance_image.score_);
+                    frame_instance_matches.emplace_back(false);
                 }
 
                 for (const auto& object_pair : object_raycasts)
@@ -205,7 +210,7 @@ namespace oslam
                     const cv::Mat& object_raycast = object_pair.second;
                     TSDFObject::Ptr object        = map_->getObject(id);
 
-                    auto iter = associateObjects(object_raycast, frame_instance_images, frame_instance_matches);
+                    auto iter = associateObjects(id, object_raycast, frame_instance_images, frame_instance_matches);
 
                     if (iter == frame_instance_images.end())
                     {
@@ -217,14 +222,24 @@ namespace oslam
                         object->existence_++;
                         object->integrate(frame, *iter, camera_pose);
                     }
+                    spdlog::debug("Object existence: {}, non-existence: {}", object->existence_, object->non_existence_);
                 }
 
+                spdlog::info("Number of frame instance matches: {}", frame_instance_matches.size());
                 // Create new objects for unmatched instance images
                 for (size_t i = 0; i < frame_instance_matches.size(); i++)
                 {
                     if (!frame_instance_matches.at(i))
                     {
+                        spdlog::info("Creating object: {}", i);
+                        spdlog::info("Camera pose: {}", camera_pose);
+                        spdlog::info("frame_instance_images size: {}, frame_instance_matches size: {}",
+                                     frame_instance_images.size(),
+                                     frame_instance_matches.size());
+                        spdlog::info("instance image score: {}", frame_instance_images.at(i).score_);
+                        spdlog::info("mask size: {}", cv::countNonZero(frame_instance_images.at(i).maskb_));
                         auto object = createObject(frame, frame_instance_images.at(i), camera_pose);
+                        spdlog::info("Created object: {}", i);
                         if (!object)
                         {
                             spdlog::debug("Object creation failed!");
@@ -237,47 +252,54 @@ namespace oslam
                         object_pose_graph_.emplace_shared<BetweenFactor<Pose3>>(
                             bg_key, object_key, Pose3(object->getPose()), between_noise);
                         map_->addObject(object);
+                        spdlog::info("Added object into the map");
+                    }
+                    else
+                    {
+                        spdlog::debug("Object instance {} matched", i);
                     }
                 }
 
 #ifdef OSLAM_DEBUG_VIS
-                object_pose_graph_.print("Factor Graph:\n");
+                /* object_pose_graph_.print("Factor Graph:\n"); */
 #endif
+                // Evaluate remove objects with very low existence probability
+                std::vector<ObjectId> to_delete_objects;
+                for (const auto& object_pair : map_->id_to_object_)
+                {
+                    const ObjectId id           = object_pair.first;
+                    TSDFObject::ConstPtr object = object_pair.second;
+
+                    if (object->isBackground())
+                    {
+                        continue;
+                    }
+
+                    double existence_expect = object->getExistExpectation();
+                    spdlog::debug("{} -> Existence expectation: {}", id, existence_expect);
+
+                    if (existence_expect < 0.2)
+                    {
+                        to_delete_objects.push_back(id);
+                    }
+                }
+
+                for (const auto& object_id : to_delete_objects)
+                {
+                    spdlog::info("Removing object {}", object_id);
+                    map_->removeObject(object_id);
+                }
+
+                if (shouldCreateNewBackground(frame.timestamp_))
+                {
+                    TSDFObject::Ptr new_bg = createBackground(frame, camera_pose);
+
+                    map_->addObject(new_bg, true);
+                    spdlog::info("Added new background object into the map");
+                }
             }
             mapper_status = MapperStatus::VALID;
         }
-
-        // Evaluate remove objects with very low existence probability
-        std::vector<ObjectId> to_delete_objects;
-        for (const auto& object_pair : map_->id_to_object_)
-        {
-            const ObjectId id           = object_pair.first;
-            TSDFObject::ConstPtr object = object_pair.second;
-
-            if (object->isBackground())
-            {
-                continue;
-            }
-
-            double existence_expect = object->getExistExpectation();
-            spdlog::debug("{} -> Existence expectation: {}", existence_expect);
-
-            if (existence_expect < 0.1)
-            {
-                to_delete_objects.push_back(id);
-            }
-        }
-
-        for (const auto& object_id : to_delete_objects)
-        {
-            map_->removeObject(object_id);
-        }
-
-        auto active_bg = map_->getBackground();
-        spdlog::info("Obtained background");
-        double vis_ratio = active_bg->getVisibilityRatio(frame.timestamp_);
-        spdlog::info("Visibility Ratio: {}", vis_ratio);
-
         return std::make_unique<RendererInput>(curr_timestamp_, mapper_status, frame, T_camera_to_world_.back());
     }
 
@@ -292,6 +314,17 @@ namespace oslam
 
         background->integrate(frame, background_instance, camera_pose);
         return background;
+    }
+
+    bool Mapper::shouldCreateNewBackground(Timestamp timestamp)
+    {
+        auto active_bg   = map_->getBackground();
+        double vis_ratio = active_bg->getVisibilityRatio(timestamp);
+        spdlog::debug("Visibility Ratio: {}", vis_ratio);
+
+        if (vis_ratio < 0.2)
+            return true;
+        return false;
     }
 
     TSDFObject::Ptr Mapper::createObject(const Frame& frame,
@@ -313,6 +346,7 @@ namespace oslam
 
         Eigen::Vector2i object_center = Eigen::Vector2i((instance_image.bbox_[0] + instance_image.bbox_[2]) / 2,
                                                         (instance_image.bbox_[1] + instance_image.bbox_[3]) / 2);
+        spdlog::info("Object center: {}", object_center);
         if (!(object_center[0] >= InstanceImage::BORDER_WIDTH &&
               object_center[0] < frame.width_ - InstanceImage::BORDER_WIDTH &&
               object_center[1] >= InstanceImage::BORDER_WIDTH &&
@@ -323,9 +357,12 @@ namespace oslam
         }
 
         ObjectId object_id(instance_image.label_, frame.timestamp_, instance_image.bbox_);
+        spdlog::info("Creating object ID: {}", object_id);
         TSDFObject::Ptr object =
             std::make_shared<TSDFObject>(object_id, frame, instance_image, camera_pose, OBJECT_RESOLUTION);
+        spdlog::info("Created object: {} Integrating now", object_id);
         object->integrate(frame, instance_image, camera_pose);
+        spdlog::info("Created object: {} Integrated", object_id);
         return object;
     }
 
@@ -360,7 +397,8 @@ namespace oslam
         }
     }
 
-    InstanceImages::const_iterator Mapper::associateObjects(const cv::Mat& object_raycast,
+    InstanceImages::const_iterator Mapper::associateObjects(const ObjectId& id,
+                                                            const cv::Mat& object_raycast,
                                                             const InstanceImages& instance_images,
                                                             std::vector<bool>& instance_matches)
     {
@@ -374,8 +412,10 @@ namespace oslam
         {
             if (iter->score_ < SCORE_THRESHOLD)
             {
-                spdlog::warn(
-                    "InstanceImage {} with score {} is below score threshold. Not matched", iter->label_, iter->score_);
+                spdlog::warn("InstanceImage {} with score {} is below score threshold. Not matched with {}",
+                             iter->label_,
+                             iter->score_,
+                             id);
                 continue;
             }
 
@@ -387,9 +427,9 @@ namespace oslam
             int intersection_val = cv::countNonZero(intersection_mask);
 
             auto quality = static_cast<float>(intersection_val) / static_cast<float>(union_val);
-            spdlog::debug("Quality of the association: {}, Target label: {}", quality, iter->label_);
 
             size_t curr_idx = size_t(iter - instance_images.begin());
+            spdlog::debug("{} -> Quality of the association: {}, Target label: {}, current index: {}", id, quality, iter->label_, curr_idx);
             if (!instance_matches.at(curr_idx) && quality > IOU_OVERLAP_THRESHOLD && union_val > MASK_AREA_THRESHOLD)
             {
                 instance_matches.at(curr_idx) = true;

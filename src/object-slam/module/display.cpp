@@ -80,7 +80,6 @@ namespace oslam
         const WidgetsMap& widgets_map = input->widgets_map_;
         show2dWindow(images_to_display);
         show3dWindow(widgets_map);
-        spdlog::info("Showed window");
         return nullptr;
     }
 
@@ -102,7 +101,7 @@ namespace oslam
 
         for(auto it = widgets_map.begin(); it != widgets_map.end(); ++it)
         {
-            spdlog::info("Showing widget {}", it->first);
+            spdlog::debug("Showed widget: {}", it->first);
             window_3d_.showWidget(it->first, *(it->second), it->second->getPose());
         }
         window_3d_.spinOnce(1, true);

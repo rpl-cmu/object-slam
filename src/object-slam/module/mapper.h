@@ -61,6 +61,7 @@ namespace oslam
 
         virtual InputUniquePtr getInputPacket() override;
 
+        bool shouldCreateNewBackground(Timestamp timestamp);
         static TSDFObject::Ptr createBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose);
         static TSDFObject::Ptr createObject(const Frame& frame,
                                             const InstanceImage& instance_image,
@@ -70,7 +71,8 @@ namespace oslam
                                const Frame& frame,
                                const Eigen::Matrix4d& camera_pose);
 
-        static InstanceImages::const_iterator associateObjects(const cv::Mat& object_raycast,
+        static InstanceImages::const_iterator associateObjects(const ObjectId& id,
+                                                               const cv::Mat& object_raycast,
                                                                const InstanceImages& instance_images,
                                                                std::vector<bool>& instance_matches);
 
