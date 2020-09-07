@@ -12,6 +12,7 @@
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/PriorFactor.h>
+#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 
 #include <memory>
 #include <opencv2/core.hpp>
@@ -125,6 +126,7 @@ namespace oslam
                 auto prior_noise = noiseModel::Diagonal::Sigmas(Vector6::Constant(0.01));
                 spdlog::debug("Background object pose:\n{}", bg->getPose());
                 object_pose_graph_.emplace_shared<PriorFactor<Pose3>>(bg_key, Pose3(bg->getPose()), prior_noise);
+                object_pose_values_.insert(bg_key, Pose3(bg->getPose()));
                 spdlog::debug("Created background object and emplaced in graph");
                 map_->addObject(bg, true);
 
@@ -144,6 +146,7 @@ namespace oslam
                     spdlog::debug("Current object pose:\n {}", object->getPose());
                     object_pose_graph_.emplace_shared<BetweenFactor<Pose3>>(
                         bg_key, object_key, Pose3(object->getPose()), between_noise);
+                    object_pose_values_.insert(object_key, Pose3(object->getPose()));
                     map_->addObject(object);
                 }
                 mapper_status = MapperStatus::VALID;
@@ -198,8 +201,6 @@ namespace oslam
                     BoundingBox proj_bbox;
                     transform_project_bbox(
                         instance_image.bbox_, proj_bbox, depthf, frame.intrinsic_, T_maskcamera_to_camera);
-
-                    cv::imshow("Projected mask", proj_mask);
                     frame_instance_images.emplace_back(proj_mask, proj_bbox, instance_image.label_, instance_image.score_);
                     frame_instance_matches.emplace_back(false);
                 }
@@ -251,6 +252,7 @@ namespace oslam
                         auto between_noise = noiseModel::Diagonal::Variances(Vector6::Constant(1e-3));
                         object_pose_graph_.emplace_shared<BetweenFactor<Pose3>>(
                             bg_key, object_key, Pose3(object->getPose()), between_noise);
+                        object_pose_values_.insert(object_key, Pose3(object->getPose()));
                         map_->addObject(object);
                         spdlog::info("Added object into the map");
                     }
@@ -296,6 +298,16 @@ namespace oslam
 
                     map_->addObject(new_bg, true);
                     spdlog::info("Added new background object into the map");
+                }
+
+                if (prev_maskframe_timestamp_ == curr_timestamp_)
+                {
+                    std::unique_ptr<gtsam::LevenbergMarquardtOptimizer> optimizer =
+                        std::make_unique<gtsam::LevenbergMarquardtOptimizer>(object_pose_graph_, object_pose_values_);
+                    gtsam::Values new_values = optimizer->optimize();
+                    spdlog::info("Graph error before optimize: {}", object_pose_graph_.error(object_pose_values_));
+                    spdlog::info("Graph error after optimize: {}", object_pose_graph_.error(new_values));
+                    updateMap(new_values);
                 }
             }
             mapper_status = MapperStatus::VALID;
@@ -372,10 +384,10 @@ namespace oslam
     {
         using namespace open3d;
         object_raycasts.reserve(map_->id_to_object_.size());
-        for (const auto& object_pair : map_->id_to_object_)
+        for (auto& object_pair : map_->id_to_object_)
         {
             const ObjectId& id     = object_pair.first;
-            TSDFObject::Ptr object = object_pair.second;
+            TSDFObject::Ptr& object = object_pair.second;
 
             if (object->isBackground())
             {
@@ -429,7 +441,7 @@ namespace oslam
             auto quality = static_cast<float>(intersection_val) / static_cast<float>(union_val);
 
             size_t curr_idx = size_t(iter - instance_images.begin());
-            spdlog::debug("{} -> Quality of the association: {}, Target label: {}, current index: {}", id, quality, iter->label_, curr_idx);
+            spdlog::debug("{} -> Quality of the association: {}, Target label: {}", id, quality, iter->label_);
             if (!instance_matches.at(curr_idx) && quality > IOU_OVERLAP_THRESHOLD && union_val > MASK_AREA_THRESHOLD)
             {
                 instance_matches.at(curr_idx) = true;
@@ -437,6 +449,22 @@ namespace oslam
             }
         }
         return instance_images.end();
+    }
+
+    void Mapper::updateMap(const gtsam::Values& values)
+    {
+
+        for(auto& object_pair : map_->id_to_object_)
+        {
+            const ObjectId& id = object_pair.first;
+            TSDFObject::Ptr& object = object_pair.second;
+
+            if(values.exists(object->hash(id)))
+            {
+                gtsam::Pose3 updatePose = values.at<gtsam::Pose3>(object->hash(id));
+                object->setPose(updatePose.matrix());
+            }
+        }
     }
 
 }  // namespace oslam

@@ -1,9 +1,9 @@
 
 include (${CMAKE_CURRENT_LIST_DIR}/CPM.cmake)
 
-# set(CPM_USE_LOCAL_PACKAGES ON)
-CPMAddPackage(
+CPMFindPackage(
     NAME Open3D
+    COMPONENTS Open3DCuda
     GITHUB_REPOSITORY akashsharma02/Open3D
     VERSION 0.9.0
     GIT_TAG object-slam

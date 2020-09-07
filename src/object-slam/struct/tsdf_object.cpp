@@ -95,14 +95,6 @@ namespace oslam
         auto object_depth = frame.depth_.clone();
         object_depth.setTo(0, ~instance_image.bbox_mask_);
 
-        // For visualization/debug only
-#ifdef OSLAM_DEBUG_VIS
-        cv::Mat cvt8;
-        cv::convertScaleAbs(object_depth, cvt8, 0.25F);
-        /* cv::imshow("Integrating Depth", cvt8); */
-        /* cv::waitKey(1); */
-#endif
-
         open3d::cuda::RGBDImageCuda object_rgbd_cuda;
         object_rgbd_cuda.Upload(object_depth, color);
 

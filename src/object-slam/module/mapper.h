@@ -76,6 +76,8 @@ namespace oslam
                                                                const InstanceImages& instance_images,
                                                                std::vector<bool>& instance_matches);
 
+        void updateMap(const gtsam::Values& values);
+
         Map::Ptr map_;
         ObjectId active_bg_id_;
 
@@ -91,6 +93,8 @@ namespace oslam
             T_camera_to_world_;  //!< Camera trajectory pose w.r.t first submap
 
         gtsam::NonlinearFactorGraph object_pose_graph_;
+        gtsam::Values object_pose_values_;
+
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_MAPPER_H */
