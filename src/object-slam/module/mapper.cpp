@@ -10,9 +10,9 @@
 #include <Cuda/OSLAMUtils/SegmentationCuda.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/inference/Symbol.h>
+#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/PriorFactor.h>
-#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 
 #include <memory>
 #include <opencv2/core.hpp>
@@ -108,6 +108,7 @@ namespace oslam
         const InstanceImages& instance_images       = mapper_payload.instance_images_;
         const Eigen::Matrix4d& relative_camera_pose = mapper_payload.relative_camera_pose_;
         MapperStatus mapper_status                  = MapperStatus::INVALID;
+        ObjectRendersUniquePtr object_renders       = std::make_unique<ObjectRenders>();
 
         if (curr_timestamp_ == 1)
         {
@@ -116,6 +117,7 @@ namespace oslam
             {
                 const Eigen::Matrix4d& camera_pose = relative_camera_pose;
                 T_camera_to_world_.push_back(camera_pose);
+
 
                 // Add camera pose and factor to the graph
                 TSDFObject::Ptr bg = createBackground(frame, camera_pose);
@@ -129,6 +131,8 @@ namespace oslam
                 object_pose_values_.insert(bg_key, Pose3(bg->getPose()));
                 spdlog::debug("Created background object and emplaced in graph");
                 map_->addObject(bg, true);
+
+                renderMapObjects(object_renders, frame, camera_pose);
 
                 // Add each object in the first frame as a landmark
                 for (const auto& instance_image : instance_images)
@@ -162,8 +166,8 @@ namespace oslam
                 TSDFObject::Ptr active_bg = map_->getBackground();
                 active_bg->integrate(frame, InstanceImage(frame.width_, frame.height_), camera_pose);
 
-                std::vector<std::pair<ObjectId, cv::Mat>> object_raycasts;
-                raycastMapObjects(object_raycasts, frame, camera_pose);
+                //! TODO: Raycast only those objects in the camera frustum
+                renderMapObjects(object_renders, frame, camera_pose);
 
                 // Project the masks to current frame
                 auto T_maskcamera_to_world             = T_camera_to_world_.at(prev_maskframe_timestamp_ - 1);
@@ -205,13 +209,17 @@ namespace oslam
                     frame_instance_matches.emplace_back(false);
                 }
 
-                for (const auto& object_pair : object_raycasts)
+                for (const auto& object_pair : *object_renders)
                 {
-                    ObjectId id                   = object_pair.first;
-                    const cv::Mat& object_raycast = object_pair.second;
-                    TSDFObject::Ptr object        = map_->getObject(id);
+                    ObjectId id                         = object_pair.first;
+                    const ObjectRender& object_render   = object_pair.second;
+                    const cv::Mat& object_raycast_color = object_render.color_map_;
+                    TSDFObject::Ptr object              = map_->getObject(id);
 
-                    auto iter = associateObjects(id, object_raycast, frame_instance_images, frame_instance_matches);
+                    if (object->isBackground())
+                        continue;
+
+                    auto iter = associateObjects(id, object_raycast_color, frame_instance_images, frame_instance_matches);
 
                     if (iter == frame_instance_images.end())
                     {
@@ -312,7 +320,7 @@ namespace oslam
             }
             mapper_status = MapperStatus::VALID;
         }
-        return std::make_unique<RendererInput>(curr_timestamp_, mapper_status, frame, T_camera_to_world_.back());
+        return std::make_unique<RendererInput>(curr_timestamp_, mapper_status, std::move(object_renders), frame, T_camera_to_world_.back());
     }
 
     TSDFObject::Ptr Mapper::createBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose)
@@ -378,21 +386,16 @@ namespace oslam
         return object;
     }
 
-    void Mapper::raycastMapObjects(std::vector<std::pair<ObjectId, cv::Mat>>& object_raycasts,
-                                   const Frame& frame,
-                                   const Eigen::Matrix4d& camera_pose)
+    void Mapper::renderMapObjects(ObjectRendersUniquePtr& object_renders,
+                                  const Frame& frame,
+                                  const Eigen::Matrix4d& camera_pose)
     {
         using namespace open3d;
-        object_raycasts.reserve(map_->id_to_object_.size());
+        object_renders->reserve(map_->id_to_object_.size());
         for (auto& object_pair : map_->id_to_object_)
         {
-            const ObjectId& id     = object_pair.first;
+            const ObjectId& id      = object_pair.first;
             TSDFObject::Ptr& object = object_pair.second;
-
-            if (object->isBackground())
-            {
-                continue;
-            }
 
             cuda::ImageCuda<float, 3> vertex;
             cuda::ImageCuda<float, 3> normal;
@@ -404,8 +407,11 @@ namespace oslam
 
             object->raycast(vertex, normal, color, camera_pose);
 
-            cv::Mat mat_raycast = color.DownloadMat();
-            object_raycasts.emplace_back(id, mat_raycast);
+            cv::Mat color_map  = color.DownloadMat();
+            cv::Mat vertex_map = vertex.DownloadMat();
+            cv::Mat normal_map = normal.DownloadMat();
+
+            object_renders->emplace(id, ObjectRender(color_map, vertex_map, normal_map));
         }
     }
 
@@ -453,13 +459,12 @@ namespace oslam
 
     void Mapper::updateMap(const gtsam::Values& values)
     {
-
-        for(auto& object_pair : map_->id_to_object_)
+        for (auto& object_pair : map_->id_to_object_)
         {
-            const ObjectId& id = object_pair.first;
+            const ObjectId& id      = object_pair.first;
             TSDFObject::Ptr& object = object_pair.second;
 
-            if(values.exists(object->hash(id)))
+            if (values.exists(object->hash(id)))
             {
                 gtsam::Pose3 updatePose = values.at<gtsam::Pose3>(object->hash(id));
                 object->setPose(updatePose.matrix());

@@ -95,8 +95,10 @@ namespace oslam
             [this](Frame::Ptr frame) { display_->fillFrameQueue(std::make_unique<Frame>(*frame)); });
 
         renderer_->registerOutputCallback([this](const RendererOutput::Ptr& render_payload) {
-            tracker_->fillModelQueue(std::make_unique<Model>(
-                render_payload->timestamp_, render_payload->colors_, render_payload->vertices_, render_payload->normals_));
+            tracker_->fillModelQueue(std::make_unique<Model>(render_payload->timestamp_,
+                                                             render_payload->background_render_->color_map_,
+                                                             render_payload->background_render_->vertex_map_,
+                                                             render_payload->background_render_->normal_map_));
         });
 
         renderer_->registerOutputCallback([this](const RendererOutput::Ptr& render_payload) {

@@ -12,8 +12,8 @@
 #include "object-slam/utils/macros.h"
 #include "object-slam/utils/pipeline_module.h"
 
-#include "object-slam/payload/renderer_payload.h"
 #include "object-slam/payload/display_payload.h"
+#include "object-slam/payload/renderer_payload.h"
 #include "object-slam/struct/map.h"
 
 namespace oslam
@@ -45,12 +45,8 @@ namespace oslam
         Timestamp curr_timestamp_ = 0;
 
         Map::Ptr map_;
-        cuda::ImageCuda<float, 3> model_vertices_cuda_;
-        cuda::ImageCuda<float, 3> model_normals_cuda_;
-        cuda::ImageCuda<uchar, 3> model_colors_cuda_;
 
         std::vector<cv::Affine3d> camera_trajectory_3d_;
-
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_RENDERER_H */

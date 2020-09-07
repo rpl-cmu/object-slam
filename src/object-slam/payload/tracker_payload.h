@@ -27,11 +27,6 @@ namespace oslam
         }
         ~Model() override = default;
 
-        //! TODO: Not sure how to handle deleted copy constructors..
-        /* Model(const Model& model) */
-        /*     : PipelinePayload(model.timestamp_), colors_(model.colors_), vertices_(model.vertices_), normals_(model.normals_) {} */
-        /* Model& operator=(const Model& model) = default; */
-
        public:
         const cv::Mat colors_;
         const cv::Mat vertices_;

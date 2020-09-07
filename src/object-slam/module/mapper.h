@@ -67,7 +67,7 @@ namespace oslam
                                             const InstanceImage& instance_image,
                                             const Eigen::Matrix4d& camera_pose);
 
-        void raycastMapObjects(std::vector<std::pair<ObjectId, cv::Mat>>& object_raycasts,
+        void renderMapObjects(ObjectRendersUniquePtr& object_renders,
                                const Frame& frame,
                                const Eigen::Matrix4d& camera_pose);
 
