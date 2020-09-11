@@ -35,6 +35,7 @@ target_link_libraries_system(
   CONAN_PKG::spdlog
   CONAN_PKG::cppzmq
   CONAN_PKG::protobuf
+  CONAN_PKG::xtensor
   Threads::Threads
   Boost::filesystem
   opencv_core

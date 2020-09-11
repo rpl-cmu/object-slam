@@ -7,6 +7,11 @@
  *****************************************************************************/
 #include "renderer.h"
 
+#include <xtensor/xadapt.hpp>
+#include <xtensor/xarray.hpp>
+#include <xtensor/xsort.hpp>
+
+#include <opencv2/core.hpp>
 #include <opencv2/core/eigen.hpp>
 
 namespace oslam
@@ -45,6 +50,65 @@ namespace oslam
                             object_render.color_map_, object_render.vertex_map_, object_render.normal_map_);
                     }
                 }
+
+                std::vector<cv::Mat> depth_array;
+                std::vector<cv::Mat> color_array;
+                std::vector<cv::Mat> vertex_array;
+                std::vector<cv::Mat> normal_array;
+
+                depth_array.reserve(object_renders->size());
+                color_array.reserve(object_renders->size());
+                vertex_array.reserve(object_renders->size());
+                normal_array.reserve(object_renders->size());
+
+                for (auto iter = object_renders->begin(); iter != object_renders->end(); ++iter)
+                {
+                    const ObjectRender& object_render = iter->second;
+                    cv::Mat depth;
+                    // Extract Z channel as depth of the object vertices
+                    cv::extractChannel(object_render.vertex_map_, depth, 2);
+                    depth_array.push_back(depth);
+                    color_array.push_back(object_render.color_map_);
+                    vertex_array.push_back(object_render.vertex_map_);
+                    normal_array.push_back(object_render.normal_map_);
+                }
+                // multichannel image with channels = num of objects in camera frustum
+                cv::Mat object_depths;
+                cv::merge(depth_array, object_depths);
+
+                std::vector<int> shape         = { object_depths.cols, object_depths.rows, object_depths.channels() };
+                xt::xarray<float> depth_xarray = xt::adapt(
+                    (float*)object_depths.data, object_depths.total() * static_cast<size_t>(object_depths.channels()), xt::no_ownership(), shape);
+
+                spdlog::info("Object depth array shape: {}", depth_xarray.shape());
+                xt::xarray<int> min_idx = xt::argmin(depth_xarray, depth_xarray.dimension() - 1);
+
+                xt::xarray<float> min_depth = xt::amin(depth_xarray, depth_xarray.dimension() - 1);
+
+                std::vector<int> shape_min(min_depth.shape().begin(), min_depth.shape().end());
+                const int* shape_min_ptr = shape.data();
+                cv::Mat min_depth_mat = cv::Mat(min_depth.shape()[1], min_depth.shape()[0], CV_32FC1, min_depth.data());
+
+                cv::imshow("Min depth matrix", min_depth_mat);
+
+                cv::Mat layered_color  = cv::Mat::zeros(frame.color_.rows, frame.color_.cols, CV_8UC3);
+                cv::Mat layered_vertex = cv::Mat::zeros(frame.color_.rows, frame.color_.cols, CV_32FC3);
+                cv::Mat layered_normal = cv::Mat::zeros(frame.color_.rows, frame.color_.cols, CV_32FC3);
+
+                for (int row = 0; row < frame.color_.rows; ++row)
+                {
+                    for (int col = 0; col < frame.color_.cols; ++col)
+                    {
+                        size_t layer                           = min_idx(row, col);
+                        layered_color.at<cv::Vec3b>(row, col)  = color_array.at(layer).at<cv::Vec3b>(row, col);
+                        layered_vertex.at<cv::Vec3f>(row, col) = vertex_array.at(layer).at<cv::Vec3f>(row, col);
+                        layered_normal.at<cv::Vec3f>(row, col) = normal_array.at(layer).at<cv::Vec3f>(row, col);
+                    }
+                }
+
+                cv::imshow("Layered color", layered_color);
+                cv::imshow("Layered normal", layered_vertex);
+
                 //! TODO: Mesh output should be part of RendererOutput
                 WidgetPtr traj_widget    = render3dTrajectory();
                 WidgetPtr frustum_widget = render3dFrustumWithColorMap(intrinsic_matrix, background_render->color_map_);
@@ -60,7 +124,6 @@ namespace oslam
                 render_output->widgets_map_.emplace("Frustum", std::move(frustum_widget));
                 return render_output;
             }
-
         }
         return nullptr;
     }

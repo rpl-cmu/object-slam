@@ -46,7 +46,9 @@ namespace oslam
 
         display_input = std::make_unique<DisplayInput>(curr_timestamp_);
         display_input->display_images_.emplace_back("Input Color Frame", input_frame->color_);
-        display_input->display_images_.emplace_back("Input Depth Frame", input_frame->depth_);
+        cv::Mat scaled_depth;
+        cv::convertScaleAbs(input_frame->depth_, scaled_depth, 0.25 * 256.0 / 1000);
+        display_input->display_images_.emplace_back("Input Depth Frame", scaled_depth);
 
         if (curr_timestamp_ == 1)
         {
