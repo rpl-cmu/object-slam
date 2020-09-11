@@ -9,6 +9,7 @@
 
 #include <xtensor/xadapt.hpp>
 #include <xtensor/xarray.hpp>
+#include <xtensor/xmath.hpp>
 #include <xtensor/xsort.hpp>
 
 #include <opencv2/core.hpp>
@@ -38,24 +39,24 @@ namespace oslam
 
             if (object_renders)
             {
-                ObjectRender::UniquePtr background_render = nullptr;
-                for (auto iter = map_->id_to_object_.begin(); iter != map_->id_to_object_.end(); ++iter)
-                {
-                    const ObjectId& id            = iter->first;
-                    const TSDFObject::Ptr& object = iter->second;
-                    if (object->isBackground())
-                    {
-                        const ObjectRender& object_render = object_renders->at(id);
-                        background_render                 = std::make_unique<ObjectRender>(
-                            object_render.color_map_, object_render.vertex_map_, object_render.normal_map_);
-                    }
-                }
+                // Get background render (Temporary)
+                /* ObjectRender::UniquePtr background_render = nullptr; */
+                /* for (auto iter = map_->id_to_object_.begin(); iter != map_->id_to_object_.end(); ++iter) */
+                /* { */
+                /*     const ObjectId& id            = iter->first; */
+                /*     const TSDFObject::Ptr& object = iter->second; */
+                /*     if (object->isBackground()) */
+                /*     { */
+                /*         const ObjectRender& object_render = object_renders->at(id); */
+                /*         background_render                 = std::make_unique<ObjectRender>( */
+                /*             object_render.color_map_, object_render.vertex_map_, object_render.normal_map_); */
+                /*     } */
+                /* } */
 
                 std::vector<cv::Mat> depth_array;
                 std::vector<cv::Mat> color_array;
                 std::vector<cv::Mat> vertex_array;
                 std::vector<cv::Mat> normal_array;
-
                 depth_array.reserve(object_renders->size());
                 color_array.reserve(object_renders->size());
                 vertex_array.reserve(object_renders->size());
@@ -76,20 +77,19 @@ namespace oslam
                 cv::Mat object_depths;
                 cv::merge(depth_array, object_depths);
 
-                std::vector<int> shape         = { object_depths.cols, object_depths.rows, object_depths.channels() };
+                std::vector<int> shape         = { object_depths.rows, object_depths.cols, object_depths.channels() };
                 xt::xarray<float> depth_xarray = xt::adapt(
                     (float*)object_depths.data, object_depths.total() * static_cast<size_t>(object_depths.channels()), xt::no_ownership(), shape);
 
-                spdlog::info("Object depth array shape: {}", depth_xarray.shape());
+                //! Use a constant greater than max depth threshold
+                /* depth_xarray = xt::where(xt::isfinite(depth_xarray), depth_xarray, 100); */
+
+
                 xt::xarray<int> min_idx = xt::argmin(depth_xarray, depth_xarray.dimension() - 1);
 
+                // Just for visualization
                 xt::xarray<float> min_depth = xt::amin(depth_xarray, depth_xarray.dimension() - 1);
-
-                std::vector<int> shape_min(min_depth.shape().begin(), min_depth.shape().end());
-                const int* shape_min_ptr = shape.data();
-                cv::Mat min_depth_mat = cv::Mat(min_depth.shape()[1], min_depth.shape()[0], CV_32FC1, min_depth.data());
-
-                cv::imshow("Min depth matrix", min_depth_mat);
+                cv::Mat min_depth_mat = cv::Mat(min_depth.shape()[0], min_depth.shape()[1], CV_32FC1, min_depth.data());
 
                 cv::Mat layered_color  = cv::Mat::zeros(frame.color_.rows, frame.color_.cols, CV_8UC3);
                 cv::Mat layered_vertex = cv::Mat::zeros(frame.color_.rows, frame.color_.cols, CV_32FC3);
@@ -105,16 +105,15 @@ namespace oslam
                         layered_normal.at<cv::Vec3f>(row, col) = normal_array.at(layer).at<cv::Vec3f>(row, col);
                     }
                 }
-
-                cv::imshow("Layered color", layered_color);
-                cv::imshow("Layered normal", layered_vertex);
+                cv::imshow("Layered color image", layered_color);
+                ObjectRender::UniquePtr layered_render = std::make_unique<ObjectRender>(layered_color, layered_vertex, layered_normal);
 
                 //! TODO: Mesh output should be part of RendererOutput
                 WidgetPtr traj_widget    = render3dTrajectory();
-                WidgetPtr frustum_widget = render3dFrustumWithColorMap(intrinsic_matrix, background_render->color_map_);
+                WidgetPtr frustum_widget = render3dFrustumWithColorMap(intrinsic_matrix, layered_render->color_map_);
 
                 RendererOutput::UniquePtr render_output =
-                    std::make_unique<RendererOutput>(curr_timestamp_ + 1, std::move(background_render));
+                    std::make_unique<RendererOutput>(curr_timestamp_ + 1, std::move(layered_render));
 
                 auto raycast_finish_time = Timer::toc(raycast_start_time).count();
 

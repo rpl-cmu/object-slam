@@ -3,7 +3,6 @@ include (${CMAKE_CURRENT_LIST_DIR}/CPM.cmake)
 
 CPMFindPackage(
     NAME Open3D
-    COMPONENTS Open3DCuda
     GITHUB_REPOSITORY akashsharma02/Open3D
     VERSION 0.9.0
     GIT_TAG object-slam
@@ -18,4 +17,3 @@ CPMFindPackage(
     "BUILD_WITH_MARCH_NATIVE OFF"
     "ENABLE_JUPYTER OFF"
     )
-

@@ -44,7 +44,7 @@ namespace oslam
         using ModelInputQueue = ThreadsafeQueue<Model::UniquePtr>;
         using FrameInputQueue = ThreadsafeQueue<Frame::UniquePtr>;
 
-        Tracker(OutputQueue* output_queue);
+        explicit Tracker(OutputQueue* output_queue);
         virtual ~Tracker() = default;
 
         void fillFrameQueue(Frame::UniquePtr frame) { frame_queue_.push(std::move(frame)); }

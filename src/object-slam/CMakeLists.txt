@@ -3,9 +3,9 @@ include(${PROJECT_SOURCE_DIR}/cmake/Functions.cmake)
 find_package(GTSAM REQUIRED)
 
 # include Open3D library by downloading if not already present
-# include(${PROJECT_SOURCE_DIR}/cmake/Open3D.cmake)
-find_package(Open3D REQUIRED
-             COMPONENTS Open3DCuda)
+include(${PROJECT_SOURCE_DIR}/cmake/Open3D.cmake)
+# find_package(Open3D REQUIRED
+#              COMPONENTS Open3DCuda)
 
 # --------- Create object-slam library ----------------------------
 add_library(${PROJECT_NAME})
@@ -46,6 +46,8 @@ target_link_libraries_system(
   Open3D::Open3DCuda
   gtsam
 )
+
+# target_link_libraries(${PROJECT_NAME} PUBLIC Open3DCuda)
 
 # TODO: Is this Required?
 if(WITH_OPENMP)

@@ -55,11 +55,6 @@ namespace oslam
               depth_(frame.depth_),
               intrinsic_(frame.intrinsic_),
               is_maskframe_(frame.is_maskframe_){};
-        Frame& operator=(const Frame& frame) = default;
-
-        //! Move constructor and assignment TODO: Required?
-        Frame(Frame&& frame) = default;
-        Frame& operator=(Frame&& frame) = default;
 
        public:
         //! Frame size
