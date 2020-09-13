@@ -50,7 +50,7 @@ namespace oslam
         ObjectId active_bg_id_;
 
        private:
-        std::mutex mutex_;
+        std::recursive_mutex mutex_;
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_MAP_H */

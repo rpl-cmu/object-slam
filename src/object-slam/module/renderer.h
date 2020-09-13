@@ -39,14 +39,17 @@ namespace oslam
         virtual OutputUniquePtr runOnce(InputUniquePtr input) override;
 
        private:
-        WidgetPtr render3dTrajectory();
-        WidgetPtr render3dFrustumTraj(const Eigen::Matrix3d& intrinsic_matrix, const size_t& num_prev_frustums);
-        WidgetPtr render3dFrustumWithColorMap(const Eigen::Matrix3d& intrinsic_matrix, const cv::Mat& color_map);
+        static std::vector<cv::Affine3d> fillCameraTrajectory(const PoseTrajectory& camera_trajectory);
+        WidgetPtr render3dTrajectory(const std::vector<cv::Affine3d>& camera_trajectory_3d);
+        WidgetPtr render3dFrustumTraj(const std::vector<cv::Affine3d>& camera_trajectory_3d,
+                                      const Eigen::Matrix3d& intrinsic_matrix,
+                                      const size_t& num_prev_frustums);
+        WidgetPtr render3dFrustumWithColorMap(const std::vector<cv::Affine3d>& camera_trajectory_3d,
+                                              const Eigen::Matrix3d& intrinsic_matrix,
+                                              const cv::Mat& color_map);
         Timestamp curr_timestamp_ = 0;
 
         Map::Ptr map_;
-
-        std::vector<cv::Affine3d> camera_trajectory_3d_;
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_RENDERER_H */

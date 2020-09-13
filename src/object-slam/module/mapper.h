@@ -9,8 +9,8 @@
 #define OSLAM_MAPPER_H
 
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
-
 #include <Eigen/Eigen>
+
 #include <limits>
 #include <vector>
 
@@ -68,8 +68,8 @@ namespace oslam
                                             const Eigen::Matrix4d& camera_pose);
 
         void renderMapObjects(ObjectRendersUniquePtr& object_renders,
-                               const Frame& frame,
-                               const Eigen::Matrix4d& camera_pose);
+                              const Frame& frame,
+                              const Eigen::Matrix4d& camera_pose);
 
         static InstanceImages::const_iterator associateObjects(const ObjectId& id,
                                                                const cv::Mat& object_raycast,
@@ -85,16 +85,15 @@ namespace oslam
         TransportOutputQueue* transport_output_queue_;
         ImageTransportOutput::UniquePtr prev_transport_output_;
 
-        Timestamp curr_timestamp_           = 0;
-        Timestamp prev_maskframe_timestamp_ = 0;
-        Timestamp max_timestamp_            = std::numeric_limits<Timestamp>::max();
+        Timestamp curr_timestamp_ = 0;
+        std::vector<Timestamp> keyframe_timestamps_;
 
-        std::vector<Eigen::Matrix4d, Eigen::aligned_allocator<Eigen::Matrix4d>>
-            T_camera_to_world_;  //!< Camera trajectory pose w.r.t first submap
+        Timestamp max_timestamp_ = std::numeric_limits<Timestamp>::max();
+
+        PoseTrajectory T_camera_to_world_trajectory_;  //!< Camera trajectory pose w.r.t global coordinate frame
 
         gtsam::NonlinearFactorGraph object_pose_graph_;
         gtsam::Values object_pose_values_;
-
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_MAPPER_H */

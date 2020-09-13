@@ -28,10 +28,17 @@ namespace oslam
 {
     bool Map::addObject(TSDFObject::Ptr object, bool is_active_bg)
     {
-        std::scoped_lock<std::mutex> lock_add_object(mutex_);
+        std::scoped_lock<std::recursive_mutex> lock_add_object(mutex_);
         auto success = id_to_object_.insert(std::make_pair(object->id_, object));
         if (is_active_bg)
         {
+            //! Remove the previous active background
+            if (!(active_bg_id_ == ObjectId()))
+            {
+                spdlog::info("Removing previous background");
+                removeObject(active_bg_id_);
+                spdlog::info("Removed previous background successfully");
+            }
             active_bg_id_ = object->id_;
         }
         spdlog::debug("Added new entry: {} to the map, new size: {}", object->id_, id_to_object_.size());
@@ -40,9 +47,9 @@ namespace oslam
 
     bool Map::removeObject(const ObjectId& id)
     {
-        std::scoped_lock<std::mutex> lock_remove_object(mutex_);
+        std::scoped_lock<std::recursive_mutex> lock_remove_object(mutex_);
         auto it = id_to_object_.find(id);
-        if(it == id_to_object_.end())
+        if (it == id_to_object_.end())
         {
             spdlog::error("Fatal: could not find object in the map");
             return false;
@@ -50,9 +57,9 @@ namespace oslam
         id_to_object_.erase(it);
         return true;
     }
-    TSDFObject::Ptr Map::getObject(const ObjectId &id)
+    TSDFObject::Ptr Map::getObject(const ObjectId& id)
     {
-        std::scoped_lock<std::mutex> lock_get_object(mutex_);
+        std::scoped_lock<std::recursive_mutex> lock_get_object(mutex_);
         auto it = id_to_object_.find(id);
         if (it == id_to_object_.end())
         {

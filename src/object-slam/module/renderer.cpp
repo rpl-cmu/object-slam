@@ -7,6 +7,7 @@
  *****************************************************************************/
 #include "renderer.h"
 
+#include <vector>
 #include <xtensor/xadapt.hpp>
 #include <xtensor/xarray.hpp>
 #include <xtensor/xmath.hpp>
@@ -24,19 +25,17 @@ namespace oslam
         curr_timestamp_                              = input->timestamp_;
         const RendererInput& renderer_payload        = *input;
         const Frame& frame                           = renderer_payload.frame_;
-        const Eigen::Matrix4d& camera_pose           = renderer_payload.camera_pose_;
+        const PoseTrajectory& camera_trajectory      = renderer_payload.camera_trajectory_;
         const Eigen::Matrix3d& intrinsic_matrix      = frame.intrinsic_.intrinsic_matrix_;
         const ObjectRendersUniquePtr& object_renders = renderer_payload.object_renders_;
 
-        cv::Matx44d cv_camera;
-        cv::eigen2cv(camera_pose, cv_camera);
-        cv::Affine3d cv_camera_pose(cv_camera);
-        camera_trajectory_3d_.push_back(cv_camera_pose);
+        std::vector<cv::Affine3d> camera_trajectory_3d = fillCameraTrajectory(camera_trajectory);
+        spdlog::info("Filled camera_trajectory");
 
         if (renderer_payload.mapper_status_ == MapperStatus::VALID)
         {
             auto raycast_start_time = Timer::tic();
-
+            spdlog::info("Mapping status is valid");
             if (object_renders)
             {
                 // Get background render (Temporary)
@@ -52,6 +51,7 @@ namespace oslam
                 /*             object_render.color_map_, object_render.vertex_map_, object_render.normal_map_); */
                 /*     } */
                 /* } */
+                /* spdlog::info("Obtained background render"); */
 
                 std::vector<cv::Mat> depth_array;
                 std::vector<cv::Mat> color_array;
@@ -77,13 +77,15 @@ namespace oslam
                 cv::Mat object_depths;
                 cv::merge(depth_array, object_depths);
 
-                std::vector<int> shape         = { object_depths.rows, object_depths.cols, object_depths.channels() };
-                xt::xarray<float> depth_xarray = xt::adapt(
-                    (float*)object_depths.data, object_depths.total() * static_cast<size_t>(object_depths.channels()), xt::no_ownership(), shape);
+                std::vector<int> shape = { object_depths.rows, object_depths.cols, object_depths.channels() };
+                xt::xarray<float> depth_xarray =
+                    xt::adapt((float*)object_depths.data,
+                              object_depths.total() * static_cast<size_t>(object_depths.channels()),
+                              xt::no_ownership(),
+                              shape);
 
                 //! Use a constant greater than max depth threshold
-                /* depth_xarray = xt::where(xt::isfinite(depth_xarray), depth_xarray, 100); */
-
+                depth_xarray = xt::where(xt::isfinite(depth_xarray), depth_xarray, 101);
 
                 xt::xarray<int> min_idx = xt::argmin(depth_xarray, depth_xarray.dimension() - 1);
 
@@ -105,12 +107,12 @@ namespace oslam
                         layered_normal.at<cv::Vec3f>(row, col) = normal_array.at(layer).at<cv::Vec3f>(row, col);
                     }
                 }
-                cv::imshow("Layered color image", layered_color);
-                ObjectRender::UniquePtr layered_render = std::make_unique<ObjectRender>(layered_color, layered_vertex, layered_normal);
+                /* cv::imshow("Layered color image", layered_color); */
+                ObjectRender::UniquePtr layered_render = std::make_unique<ObjectRender>(layered_color, layered_vertex,layered_normal);
 
                 //! TODO: Mesh output should be part of RendererOutput
-                WidgetPtr traj_widget    = render3dTrajectory();
-                WidgetPtr frustum_widget = render3dFrustumWithColorMap(intrinsic_matrix, layered_render->color_map_);
+                WidgetPtr traj_widget    = render3dTrajectory(camera_trajectory_3d);
+                WidgetPtr frustum_widget = render3dFrustumWithColorMap(camera_trajectory_3d, intrinsic_matrix, layered_render->color_map_);
 
                 RendererOutput::UniquePtr render_output =
                     std::make_unique<RendererOutput>(curr_timestamp_ + 1, std::move(layered_render));
@@ -127,14 +129,29 @@ namespace oslam
         return nullptr;
     }
 
-    WidgetPtr Renderer::render3dTrajectory()
+    std::vector<cv::Affine3d> Renderer::fillCameraTrajectory(const PoseTrajectory& camera_trajectory)
+    {
+        std::vector<cv::Affine3d> camera_trajectory_3d;
+        camera_trajectory_3d.reserve(camera_trajectory.size());
+        for (const auto& camera_pose : camera_trajectory)
+        {
+            cv::Matx44d cv_camera;
+            cv::eigen2cv(camera_pose, cv_camera);
+            cv::Affine3d cv_camera_pose(cv_camera);
+            camera_trajectory_3d.push_back(cv_camera_pose);
+        }
+        return camera_trajectory_3d;
+    }
+    WidgetPtr Renderer::render3dTrajectory(const std::vector<cv::Affine3d>& camera_trajectory_3d)
     {
         //! TODO: Limit trajectory length
         return std::make_shared<cv::viz::WTrajectory>(
-            camera_trajectory_3d_, cv::viz::WTrajectory::PATH, 1.0, cv::viz::Color::red());
+            camera_trajectory_3d, cv::viz::WTrajectory::PATH, 1.0, cv::viz::Color::red());
     }
 
-    WidgetPtr Renderer::render3dFrustumTraj(const Eigen::Matrix3d& intrinsic_matrix, const size_t& num_prev_frustums)
+    WidgetPtr Renderer::render3dFrustumTraj(const std::vector<cv::Affine3d>& camera_trajectory_3d,
+                                            const Eigen::Matrix3d& intrinsic_matrix,
+                                            const size_t& num_prev_frustums)
     {
         cv::Matx33d K;
         cv::eigen2cv(intrinsic_matrix, K);
@@ -142,7 +159,7 @@ namespace oslam
         std::vector<cv::Affine3d> trajectory_frustums;
         trajectory_frustums.reserve(num_prev_frustums);
         size_t count = 0;
-        for (auto it = camera_trajectory_3d_.end(); it != camera_trajectory_3d_.begin() && count < num_prev_frustums; --it)
+        for (auto it = camera_trajectory_3d.end(); it != camera_trajectory_3d.begin() && count < num_prev_frustums; --it)
         {
             trajectory_frustums.push_back(*it);
             count++;
@@ -150,13 +167,13 @@ namespace oslam
         return std::make_unique<cv::viz::WTrajectoryFrustums>(trajectory_frustums, K, 0.2, cv::viz::Color::green());
     }
 
-    WidgetPtr Renderer::render3dFrustumWithColorMap(const Eigen::Matrix3d& intrinsic_matrix, const cv::Mat& color_map)
+    WidgetPtr Renderer::render3dFrustumWithColorMap(const std::vector<cv::Affine3d>& camera_trajectory_3d, const Eigen::Matrix3d& intrinsic_matrix, const cv::Mat& color_map)
     {
         cv::Matx33d K;
         cv::eigen2cv(intrinsic_matrix, K);
         std::unique_ptr<cv::viz::WCameraPosition> frustum_widget =
             std::make_unique<cv::viz::WCameraPosition>(K, color_map, 1.0, cv::viz::Color::green());
-        frustum_widget->setPose(camera_trajectory_3d_.back());
+        frustum_widget->setPose(camera_trajectory_3d.back());
         return frustum_widget;
     }
 }  // namespace oslam

@@ -55,12 +55,12 @@ namespace oslam
                       const MapperStatus& mapper_status,
                       ObjectRendersUniquePtr object_renders,
                       const Frame& frame,
-                      const Eigen::Matrix4d& camera_pose)
+                      const PoseTrajectory& camera_trajectory)
             : PipelinePayload(timestamp),
               mapper_status_(mapper_status),
               object_renders_(std::move(object_renders)),
               frame_(frame),
-              camera_pose_(camera_pose)
+              camera_trajectory_(camera_trajectory)
         {
         }
 
@@ -69,7 +69,7 @@ namespace oslam
         const MapperStatus mapper_status_;
         const ObjectRendersUniquePtr object_renders_;
         const Frame frame_;
-        const Eigen::Matrix4d camera_pose_;
+        const PoseTrajectory camera_trajectory_;
     };
 
     struct RendererOutput : public PipelinePayload

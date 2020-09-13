@@ -81,7 +81,7 @@ namespace oslam
         //! DataReader fills the ImageTransporter Input Queue
         auto& transport_frame_queue = transport_input_queue_;
         data_reader_->registerOutputCallback([&transport_frame_queue](const Frame::Ptr& frame) {
-            if (frame->is_maskframe_)
+            if (frame->is_keyframe_)
             {
                 // Explicitly copy the shared frame memory
                 transport_frame_queue.push(std::make_unique<Frame>(*frame));

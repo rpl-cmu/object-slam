@@ -47,7 +47,7 @@ namespace oslam
             return nullptr;
         }
         curr_timestamp_                 = mapper_payload->timestamp_;
-        const bool is_current_maskframe = mapper_payload->frame_.is_maskframe_;
+        const bool is_current_maskframe = mapper_payload->frame_.is_keyframe_;
 
         Mapper::InputUniquePtr mapper_input;
         if (!is_current_maskframe)
@@ -55,7 +55,7 @@ namespace oslam
             spdlog::debug("Use old mask and geometric segment");
             //! Simply use the previous masked image to create tracker payload
             mapper_input = std::make_unique<MapperInput>(curr_timestamp_,
-                                                         prev_maskframe_timestamp_,
+                                                         keyframe_timestamps_.back(),
                                                          mapper_payload->tracker_status_,
                                                          mapper_payload->frame_,
                                                          prev_transport_output_->instance_images_,
@@ -85,8 +85,8 @@ namespace oslam
                                                          mapper_payload->relative_camera_pose_,
                                                          mapper_payload->information_matrix_);
 
-            prev_transport_output_    = std::move(transport_output);
-            prev_maskframe_timestamp_ = curr_timestamp_;
+            prev_transport_output_ = std::move(transport_output);
+            keyframe_timestamps_.push_back(curr_timestamp_);
         }
         if (!mapper_input)
         {
@@ -104,6 +104,7 @@ namespace oslam
 
         const MapperInput& mapper_payload           = *input;
         curr_timestamp_                             = mapper_payload.timestamp_;
+        const Timestamp& prev_keyframe_timestamp    = keyframe_timestamps_.back();
         const Frame& frame                          = mapper_payload.frame_;
         const InstanceImages& instance_images       = mapper_payload.instance_images_;
         const Eigen::Matrix4d& relative_camera_pose = mapper_payload.relative_camera_pose_;
@@ -116,23 +117,25 @@ namespace oslam
             if (mapper_payload.tracker_status_ == TrackerStatus::VALID)
             {
                 const Eigen::Matrix4d& camera_pose = relative_camera_pose;
-                T_camera_to_world_.push_back(camera_pose);
-
+                T_camera_to_world_trajectory_.push_back(camera_pose);
 
                 // Add camera pose and factor to the graph
                 TSDFObject::Ptr bg = createBackground(frame, camera_pose);
                 active_bg_id_      = bg->id_;
-                auto bg_key        = bg->hash(bg->id_);
+
+                auto camera_key = gtsam::Symbol('c', curr_timestamp_);
 
                 // Prior noise of 0.01 metres (x,y,z) and 0.01 rad in (alpha, beta, gamma)
                 auto prior_noise = noiseModel::Diagonal::Sigmas(Vector6::Constant(0.01));
-                spdlog::debug("Background object pose:\n{}", bg->getPose());
-                object_pose_graph_.emplace_shared<PriorFactor<Pose3>>(bg_key, Pose3(bg->getPose()), prior_noise);
-                object_pose_values_.insert(bg_key, Pose3(bg->getPose()));
+
+                auto between_noise = noiseModel::Diagonal::Variances(Vector6::Constant(1e-3));
+
+                //! prior --> camera <--> background
+                object_pose_graph_.emplace_shared<PriorFactor<Pose3>>(camera_key, Pose3(camera_pose), prior_noise);
+                object_pose_values_.insert(camera_key, Pose3(camera_pose));
+
                 spdlog::debug("Created background object and emplaced in graph");
                 map_->addObject(bg, true);
-
-                renderMapObjects(object_renders, frame, camera_pose);
 
                 // Add each object in the first frame as a landmark
                 for (const auto& instance_image : instance_images)
@@ -145,14 +148,19 @@ namespace oslam
                     }
 
                     auto object_key = object->hash(object->id_);
+
                     // Initially we estimate some empirical noise value
-                    auto between_noise = noiseModel::Diagonal::Variances(Vector6::Constant(1e-3));
                     spdlog::debug("Current object pose:\n {}", object->getPose());
+
+                    auto T_object_to_camera = camera_pose.inverse() * object->getPose();
                     object_pose_graph_.emplace_shared<BetweenFactor<Pose3>>(
-                        bg_key, object_key, Pose3(object->getPose()), between_noise);
+                        camera_key, object_key, Pose3(T_object_to_camera), between_noise);
+
                     object_pose_values_.insert(object_key, Pose3(object->getPose()));
+
                     map_->addObject(object);
                 }
+                renderMapObjects(object_renders, frame, camera_pose);
                 mapper_status = MapperStatus::VALID;
             }
         }
@@ -160,8 +168,27 @@ namespace oslam
         {
             if (mapper_payload.tracker_status_ == TrackerStatus::VALID)
             {
-                const Eigen::Matrix4d camera_pose = T_camera_to_world_.back() * relative_camera_pose;
-                T_camera_to_world_.push_back(camera_pose);
+                const Eigen::Matrix4d camera_pose = T_camera_to_world_trajectory_.back() * relative_camera_pose;
+                T_camera_to_world_trajectory_.push_back(camera_pose);
+
+                if (curr_timestamp_ == prev_keyframe_timestamp && instance_images.size() >= 2)
+                {
+                    auto camera_key                   = gtsam::Symbol('c', curr_timestamp_);
+                    spdlog::info("Current camera key: {}", camera_key);
+                    auto prev_prev_keyframe_timestamp = *(keyframe_timestamps_.end()-2);
+                    spdlog::info("prev_prev_keyframe_timestamp: {}", prev_prev_keyframe_timestamp);
+                    auto prev_camera_key              = gtsam::Symbol('c', prev_prev_keyframe_timestamp);
+                    spdlog::info("prev_camera_key: {}", prev_camera_key);
+                    auto T_camera_to_prev_keyframe =
+                        T_camera_to_world_trajectory_.at(prev_prev_keyframe_timestamp).inverse() * camera_pose;
+                    spdlog::info("Relative pose: {}", T_camera_to_prev_keyframe);
+                    auto between_noise = noiseModel::Diagonal::Variances(Vector6::Constant(1e-3));
+
+                    //! TODO: Add camera poses to the posegraph
+                    object_pose_graph_.emplace_shared<BetweenFactor<Pose3>>(
+                        camera_key, prev_camera_key, Pose3(T_camera_to_prev_keyframe), between_noise);
+                    object_pose_values_.insert(camera_key, Pose3(camera_pose));
+                }
 
                 TSDFObject::Ptr active_bg = map_->getBackground();
                 active_bg->integrate(frame, InstanceImage(frame.width_, frame.height_), camera_pose);
@@ -170,11 +197,11 @@ namespace oslam
                 renderMapObjects(object_renders, frame, camera_pose);
 
                 // Project the masks to current frame
-                auto T_maskcamera_to_world             = T_camera_to_world_.at(prev_maskframe_timestamp_ - 1);
-                auto T_camera_to_world                 = T_camera_to_world_.back();
-                Eigen::Matrix4d T_maskcamera_to_camera = T_camera_to_world.inverse() * T_maskcamera_to_world;
-                cuda::TransformCuda T_maskcamera_to_camera_cuda;
-                T_maskcamera_to_camera_cuda.FromEigen(T_maskcamera_to_camera);
+                auto T_keyframe_to_world             = T_camera_to_world_trajectory_.at(prev_keyframe_timestamp - 1);
+                auto T_camera_to_world               = T_camera_to_world_trajectory_.back();
+                Eigen::Matrix4d T_keyframe_to_camera = T_camera_to_world.inverse() * T_keyframe_to_world;
+                cuda::TransformCuda T_keyframe_to_camera_cuda;
+                T_keyframe_to_camera_cuda.FromEigen(T_keyframe_to_camera);
                 cuda::PinholeCameraIntrinsicCuda intrinsic_cuda(frame.intrinsic_);
 
                 InstanceImages frame_instance_images;
@@ -199,19 +226,18 @@ namespace oslam
 
                     // TODO: Use geometric segmentation
                     auto proj_mask_cuda = cuda::SegmentationCuda::TransformAndProject(
-                        src_mask, depth, T_maskcamera_to_camera_cuda, intrinsic_cuda);
+                        src_mask, depth, T_keyframe_to_camera_cuda, intrinsic_cuda);
                     cv::Mat proj_mask = proj_mask_cuda.DownloadMat();
 
                     BoundingBox proj_bbox;
-                    transform_project_bbox(
-                        instance_image.bbox_, proj_bbox, depthf, frame.intrinsic_, T_maskcamera_to_camera);
+                    transform_project_bbox(instance_image.bbox_, proj_bbox, depthf, frame.intrinsic_, T_keyframe_to_camera);
                     frame_instance_images.emplace_back(proj_mask, proj_bbox, instance_image.label_, instance_image.score_);
                     frame_instance_matches.emplace_back(false);
                 }
 
                 for (const auto& object_pair : *object_renders)
                 {
-                    ObjectId id                         = object_pair.first;
+                    const ObjectId& id                  = object_pair.first;
                     const ObjectRender& object_render   = object_pair.second;
                     const cv::Mat& object_raycast_color = object_render.color_map_;
                     TSDFObject::Ptr object              = map_->getObject(id);
@@ -230,11 +256,23 @@ namespace oslam
                     {
                         object->existence_++;
                         object->integrate(frame, *iter, camera_pose);
+
+                        if (curr_timestamp_ == prev_keyframe_timestamp && instance_images.size() >= 2)
+                        {
+                            auto camera_key         = gtsam::Symbol('c', prev_keyframe_timestamp);
+                            auto object_key         = object->hash(id);
+                            auto T_object_to_camera = camera_pose.inverse() * object->getPose();
+                            //! TODO: Add correct variances for heaven's sake!!!
+                            auto between_noise = noiseModel::Diagonal::Variances(Vector6::Constant(1e-3));
+                            object_pose_graph_.emplace_shared<BetweenFactor<Pose3>>(
+                                camera_key, object_key, Pose3(T_object_to_camera), between_noise);
+                        }
                     }
                     spdlog::debug("Object existence: {}, non-existence: {}", object->existence_, object->non_existence_);
                 }
 
                 spdlog::info("Number of frame instance matches: {}", frame_instance_matches.size());
+
                 // Create new objects for unmatched instance images
                 for (size_t i = 0; i < frame_instance_matches.size(); i++)
                 {
@@ -255,12 +293,19 @@ namespace oslam
                             continue;
                         }
                         auto object_key = object->hash(object->id_);
-                        auto bg_key     = active_bg->hash(active_bg->id_);
+                        //! Check: Should return the same camera key
+                        auto camera_key = gtsam::Symbol('c', prev_keyframe_timestamp);
 
                         auto between_noise = noiseModel::Diagonal::Variances(Vector6::Constant(1e-3));
+                        //! TODO: Some asserts for invalid maskframe_timestamps?
+                        auto T_object_to_keyframe = T_keyframe_to_world.inverse() * object->getPose();
+
+                        //! Relative pose with previous keyframe (but since background is identity)
                         object_pose_graph_.emplace_shared<BetweenFactor<Pose3>>(
-                            bg_key, object_key, Pose3(object->getPose()), between_noise);
+                            camera_key, object_key, Pose3(T_object_to_keyframe), between_noise);
+
                         object_pose_values_.insert(object_key, Pose3(object->getPose()));
+
                         map_->addObject(object);
                         spdlog::info("Added object into the map");
                     }
@@ -271,7 +316,8 @@ namespace oslam
                 }
 
 #ifdef OSLAM_DEBUG_VIS
-                /* object_pose_graph_.print("Factor Graph:\n"); */
+                object_pose_graph_.print("Factor Graph:\n");
+                object_pose_values_.print("Values to optimize: \n");
 #endif
                 // Evaluate remove objects with very low existence probability
                 std::vector<ObjectId> to_delete_objects;
@@ -303,12 +349,11 @@ namespace oslam
                 if (shouldCreateNewBackground(frame.timestamp_))
                 {
                     TSDFObject::Ptr new_bg = createBackground(frame, camera_pose);
-
                     map_->addObject(new_bg, true);
                     spdlog::info("Added new background object into the map");
                 }
 
-                if (prev_maskframe_timestamp_ == curr_timestamp_)
+                if (prev_keyframe_timestamp == curr_timestamp_)
                 {
                     std::unique_ptr<gtsam::LevenbergMarquardtOptimizer> optimizer =
                         std::make_unique<gtsam::LevenbergMarquardtOptimizer>(object_pose_graph_, object_pose_values_);
@@ -316,11 +361,18 @@ namespace oslam
                     spdlog::info("Graph error before optimize: {}", object_pose_graph_.error(object_pose_values_));
                     spdlog::info("Graph error after optimize: {}", object_pose_graph_.error(new_values));
                     updateMap(new_values);
+
+                    //! Create new background here with updated keyframe_timestamp_ pose
+                    spdlog::info("Optimized latest pose: {}", T_camera_to_world_trajectory_.back());
+                    TSDFObject::Ptr new_bg =
+                        createBackground(frame, T_camera_to_world_trajectory_.back());
+                    map_->addObject(new_bg, true);
                 }
             }
             mapper_status = MapperStatus::VALID;
         }
-        return std::make_unique<RendererInput>(curr_timestamp_, mapper_status, std::move(object_renders), frame, T_camera_to_world_.back());
+        return std::make_unique<RendererInput>(
+            curr_timestamp_, mapper_status, std::move(object_renders), frame, T_camera_to_world_trajectory_);
     }
 
     TSDFObject::Ptr Mapper::createBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose)
@@ -466,8 +518,17 @@ namespace oslam
 
             if (values.exists(object->hash(id)))
             {
-                gtsam::Pose3 updatePose = values.at<gtsam::Pose3>(object->hash(id));
-                object->setPose(updatePose.matrix());
+                gtsam::Pose3 updatedPose = values.at<gtsam::Pose3>(object->hash(id));
+                object->setPose(updatedPose.matrix());
+            }
+        }
+        for (const auto& keyframe_timestamp : keyframe_timestamps_)
+        {
+            auto camera_key = gtsam::Symbol('c', keyframe_timestamp);
+            if (values.exists(camera_key))
+            {
+                gtsam::Pose3 updatedPose                                 = values.at<gtsam::Pose3>(camera_key);
+                T_camera_to_world_trajectory_.at(keyframe_timestamp - 1) = updatedPose.matrix();
             }
         }
     }

@@ -39,7 +39,7 @@ namespace oslam
 
         return Eigen::Vector3d((static_cast<double>(depth) * (r_point2(0) - cx)) / fx,
                                (static_cast<double>(depth) * (r_point2(1) - cy)) / fy,
-                               depth);
+                               static_cast<double>(depth));
     }
 
     inline bool is_valid_depth(float depth)
