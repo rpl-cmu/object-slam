@@ -8,8 +8,8 @@
 #ifndef OSLAM_MAPPER_H
 #define OSLAM_MAPPER_H
 
-#include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <Eigen/Eigen>
+#include <gtsam/nonlinear/NonlinearFactorGraph.h>
 
 #include <limits>
 #include <vector>
@@ -61,15 +61,19 @@ namespace oslam
 
         virtual InputUniquePtr getInputPacket() override;
 
-        bool shouldCreateNewBackground(Timestamp timestamp);
-        static TSDFObject::Ptr createBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose);
-        static TSDFObject::Ptr createObject(const Frame& frame,
-                                            const InstanceImage& instance_image,
-                                            const Eigen::Matrix4d& camera_pose);
+        void initializeMapAndGraph(const Frame& frame,
+                                   const InstanceImages& instance_images,
+                                   const Eigen::Matrix4d& camera_pose);
 
-        void renderMapObjects(ObjectRendersUniquePtr& object_renders,
-                              const Frame& frame,
-                              const Eigen::Matrix4d& camera_pose);
+        void projectInstanceImages(const Timestamp& keyframe_timestamp,
+                                   const Frame& frame,
+                                   const InstanceImages& instance_images,
+                                   InstanceImages& projected_instance_images);
+        bool shouldCreateNewBackground(Timestamp timestamp);
+        static TSDFObject::UniquePtr createBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose);
+        static TSDFObject::UniquePtr createObject(const Frame& frame,
+                                                  const InstanceImage& instance_image,
+                                                  const Eigen::Matrix4d& camera_pose);
 
         static InstanceImages::const_iterator associateObjects(const ObjectId& id,
                                                                const cv::Mat& object_raycast,
@@ -78,6 +82,15 @@ namespace oslam
 
         void updateMap(const gtsam::Values& values);
 
+        std::vector<bool> integrateObjects(const Renders& object_renders,
+                                           const InstanceImages& frame_instance_images,
+                                           const Frame& frame,
+                                           const Eigen::Matrix4d& camera_pose);
+
+        unsigned int createUnmatchedObjects(const std::vector<bool>& instance_matches,
+                                            const InstanceImages& instance_images,
+                                            const Frame& frame,
+                                            const Eigen::Matrix4d& camera_pose);
         Map::Ptr map_;
         ObjectId active_bg_id_;
 
@@ -85,15 +98,25 @@ namespace oslam
         TransportOutputQueue* transport_output_queue_;
         ImageTransportOutput::UniquePtr prev_transport_output_;
 
+        void addPriorFactor(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose);
+        void addCameraCameraBetweenFactor(const Timestamp& time_source_camera,
+                                          const Timestamp& time_target_camera,
+                                          const Eigen::Matrix4d& T_source_camera_to_target_camera);
+
+        void addObjectCameraBetweenFactor(const gtsam::Key& object_key,
+                                          const Timestamp& camera_timestamp,
+                                          const Eigen::Matrix4d& T_object_to_camera);
+
+        void addCameraValue(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose);
+        void addObjectValue(const gtsam::Key& object_key, const Eigen::Matrix4d& object_pose);
+
         Timestamp curr_timestamp_ = 0;
         std::vector<Timestamp> keyframe_timestamps_;
 
         Timestamp max_timestamp_ = std::numeric_limits<Timestamp>::max();
 
-        PoseTrajectory T_camera_to_world_trajectory_;  //!< Camera trajectory pose w.r.t global coordinate frame
-
-        gtsam::NonlinearFactorGraph object_pose_graph_;
-        gtsam::Values object_pose_values_;
+        gtsam::NonlinearFactorGraph pose_graph_;
+        gtsam::Values pose_values_;
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_MAPPER_H */

@@ -57,14 +57,18 @@ namespace oslam
                      const Eigen::Matrix4d &camera_pose);
 
         [[nodiscard]] Eigen::Matrix4d getPose() const { return pose_; }
-        void setPose(const Eigen::Matrix4d& pose) { std::scoped_lock<std::mutex> lock_setpose(mutex_); pose_ = pose; }
+        void setPose(const Eigen::Matrix4d &pose)
+        {
+            std::scoped_lock<std::mutex> lock_setpose(mutex_);
+            pose_ = pose;
+        }
         [[nodiscard]] cuda::PinholeCameraIntrinsicCuda getIntrinsicCuda() const { return intrinsic_cuda_; }
 
         [[nodiscard]] double getExistExpectation() const { return double(existence_) / double(existence_ + non_existence_); }
 
         [[nodiscard]] double getVisibilityRatio(Timestamp timestamp) const;
 
-        const ObjectId id_;        //!< Const public object ID Cannot be modified
+        const ObjectId id_;             //!< Const public object ID Cannot be modified
         std::hash<ObjectId> hash;  //!< Functor for obtaining hash from object ID
 
         std::atomic_int existence_     = 1;
@@ -75,16 +79,15 @@ namespace oslam
         constexpr static float VOLUME_SIZE_SCALE          = 0.9F;
         constexpr static float TSDF_TRUNCATION_SCALE      = 5.0F;
         constexpr static int RETROSPECT_VISIBILITY_THRESH = 5;
-        int resolution_;                //!< Resolution for the object volume (about 128^3 voxels)
+
+        std::mutex mutex_;              //!< Protection against integration/raycasting from multiple threads
+        open3d::camera::PinholeCameraIntrinsic intrinsic_;
         InstanceImage instance_image_;  //!< Object semantic information
+        open3d::cuda::ScalableTSDFVolumeCuda volume_;
+        int resolution_;                //!< Resolution for the object volume (about 128^3 voxels)
+        open3d::cuda::PinholeCameraIntrinsicCuda intrinsic_cuda_;
         Eigen::Matrix4d pose_;          //!< Object pose w.r.t world frame T_o_w
 
-        open3d::camera::PinholeCameraIntrinsic intrinsic_;
-        open3d::cuda::PinholeCameraIntrinsicCuda intrinsic_cuda_;
-
-        open3d::cuda::ScalableTSDFVolumeCuda volume_;
-
-        std::mutex mutex_;  //!< Protection against integration/raycasting from multiple threads
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_OBJECT_H */

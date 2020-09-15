@@ -28,24 +28,6 @@ namespace oslam
         INVALID = 1
     };
 
-    struct ObjectRender
-    {
-       public:
-        OSLAM_POINTER_TYPEDEFS(ObjectRender);
-        ObjectRender(cv::Mat color_map, cv::Mat vertex_map, cv::Mat normal_map)
-            : color_map_(std::move(color_map)), vertex_map_(std::move(vertex_map)), normal_map_(std::move(normal_map))
-        {
-        }
-
-        ~ObjectRender() = default;
-        cv::Mat color_map_;
-        cv::Mat vertex_map_;
-        cv::Mat normal_map_;
-    };
-
-    using ObjectRenders          = std::unordered_map<ObjectId, ObjectRender>;
-    using ObjectRendersUniquePtr = std::unique_ptr<ObjectRenders>;
-
     struct RendererInput : public PipelinePayload
     {
        public:
@@ -53,23 +35,17 @@ namespace oslam
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
         RendererInput(Timestamp timestamp,
                       const MapperStatus& mapper_status,
-                      ObjectRendersUniquePtr object_renders,
-                      const Frame& frame,
-                      const PoseTrajectory& camera_trajectory)
-            : PipelinePayload(timestamp),
-              mapper_status_(mapper_status),
-              object_renders_(std::move(object_renders)),
-              frame_(frame),
-              camera_trajectory_(camera_trajectory)
+                      const Renders& object_renders,
+                      const Frame& frame)
+            : PipelinePayload(timestamp), mapper_status_(mapper_status), object_renders_(object_renders), frame_(frame)
         {
         }
 
         ~RendererInput() = default;
 
         const MapperStatus mapper_status_;
-        const ObjectRendersUniquePtr object_renders_;
+        const Renders object_renders_;
         const Frame frame_;
-        const PoseTrajectory camera_trajectory_;
     };
 
     struct RendererOutput : public PipelinePayload
@@ -77,15 +53,14 @@ namespace oslam
        public:
         OSLAM_POINTER_TYPEDEFS(RendererOutput);
 
-        RendererOutput(Timestamp timestamp, ObjectRender::UniquePtr background_render)
-            : PipelinePayload(timestamp),
-              background_render_(std::move(background_render))
+        RendererOutput(Timestamp timestamp, Render::UniquePtr background_render)
+            : PipelinePayload(timestamp), background_render_(std::move(background_render))
         {
         }
 
         ~RendererOutput() = default;
 
-        ObjectRender::UniquePtr background_render_;
+        Render::UniquePtr background_render_;
         std::map<std::string, WidgetPtr> widgets_map_{};
     };
 

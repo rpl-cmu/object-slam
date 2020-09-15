@@ -8,6 +8,7 @@
 #include "mapper.h"
 
 #include <Cuda/OSLAMUtils/SegmentationCuda.h>
+
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
@@ -100,298 +101,297 @@ namespace oslam
 
     Mapper::OutputUniquePtr Mapper::runOnce(Mapper::InputUniquePtr input)
     {
-        using namespace gtsam;
-
         const MapperInput& mapper_payload           = *input;
         curr_timestamp_                             = mapper_payload.timestamp_;
-        const Timestamp& prev_keyframe_timestamp    = keyframe_timestamps_.back();
+        const Timestamp& keyframe_timestamp         = keyframe_timestamps_.back();
         const Frame& frame                          = mapper_payload.frame_;
         const InstanceImages& instance_images       = mapper_payload.instance_images_;
         const Eigen::Matrix4d& relative_camera_pose = mapper_payload.relative_camera_pose_;
         MapperStatus mapper_status                  = MapperStatus::INVALID;
-        ObjectRendersUniquePtr object_renders       = std::make_unique<ObjectRenders>();
 
-        if (curr_timestamp_ == 1)
+        Renders object_renders;
+        bool needs_optimization = false;
+
+        switch (mapper_payload.tracker_status_)
         {
-            // Instantiate objects and background in map
-            if (mapper_payload.tracker_status_ == TrackerStatus::VALID)
+            case TrackerStatus::VALID:
             {
-                const Eigen::Matrix4d& camera_pose = relative_camera_pose;
-                T_camera_to_world_trajectory_.push_back(camera_pose);
-
-                // Add camera pose and factor to the graph
-                TSDFObject::Ptr bg = createBackground(frame, camera_pose);
-                active_bg_id_      = bg->id_;
-
-                auto camera_key = gtsam::Symbol('c', curr_timestamp_);
-
-                // Prior noise of 0.01 metres (x,y,z) and 0.01 rad in (alpha, beta, gamma)
-                auto prior_noise = noiseModel::Diagonal::Sigmas(Vector6::Constant(0.01));
-
-                auto between_noise = noiseModel::Diagonal::Variances(Vector6::Constant(1e-3));
-
-                //! prior --> camera <--> background
-                object_pose_graph_.emplace_shared<PriorFactor<Pose3>>(camera_key, Pose3(camera_pose), prior_noise);
-                object_pose_values_.insert(camera_key, Pose3(camera_pose));
-
-                spdlog::debug("Created background object and emplaced in graph");
-                map_->addObject(bg, true);
-
-                // Add each object in the first frame as a landmark
-                for (const auto& instance_image : instance_images)
+                if (curr_timestamp_ == 1)
                 {
-                    TSDFObject::Ptr object = createObject(frame, instance_image, relative_camera_pose);
-                    if (!object)
+                    initializeMapAndGraph(frame, instance_images, relative_camera_pose);
+
+                    object_renders = map_->renderObjects(frame, relative_camera_pose);
+                    mapper_status  = MapperStatus::VALID;
+                    break;
+                }
+                else
+                {
+                    const Eigen::Matrix4d camera_pose = map_->getCameraPose(curr_timestamp_ - 1) * relative_camera_pose;
+
+                    //! Add to the map
+                    map_->addCameraPose(camera_pose);
+                    spdlog::info("Added camera pose into map");
+                    if (curr_timestamp_ == keyframe_timestamp && keyframe_timestamps_.size() >= 2)
                     {
-                        spdlog::debug("Object construction failed!");
-                        continue;
+                        auto prev_keyframe_timestamp   = *(keyframe_timestamps_.end() - 2);
+                        auto prev_keyframe_pose        = map_->getCameraPose(prev_keyframe_timestamp);
+                        auto T_camera_to_prev_keyframe = prev_keyframe_pose.inverse() * camera_pose;
+
+                        addCameraCameraBetweenFactor(curr_timestamp_, prev_keyframe_timestamp, T_camera_to_prev_keyframe);
+                        addCameraValue(curr_timestamp_, camera_pose);
+                        spdlog::info("Added camera factor into pose_graph");
+
+                        needs_optimization = true;
                     }
 
-                    auto object_key = object->hash(object->id_);
+                    //! Integrate background
+                    map_->integrateBackground(frame, InstanceImage(frame.width_, frame.height_), camera_pose);
+                    spdlog::info("Integrated background");
 
-                    // Initially we estimate some empirical noise value
-                    spdlog::debug("Current object pose:\n {}", object->getPose());
+                    //! Project the instance images (object masks) into the current frame
+                    InstanceImages frame_instance_images;
+                    projectInstanceImages(keyframe_timestamp, frame, instance_images, frame_instance_images);
+                    spdlog::info("Projected instance images");
 
-                    auto T_object_to_camera = camera_pose.inverse() * object->getPose();
-                    object_pose_graph_.emplace_shared<BetweenFactor<Pose3>>(
-                        camera_key, object_key, Pose3(T_object_to_camera), between_noise);
+                    //! Associate and integrate objects in the map
+                    object_renders = map_->renderObjects(frame, camera_pose);
+                    spdlog::info("Rendered objects");
+                    std::vector<bool> frame_instance_matches =
+                        integrateObjects(object_renders, frame_instance_images, frame, camera_pose);
+                    spdlog::info("Integrated objects");
 
-                    object_pose_values_.insert(object_key, Pose3(object->getPose()));
+                    spdlog::info("Number of frame instance matches: {}", frame_instance_matches.size());
 
-                    map_->addObject(object);
+                    // Create new objects for unmatched instance images
+                    bool num_created =
+                        createUnmatchedObjects(frame_instance_matches, frame_instance_images, frame, camera_pose);
+                    if (num_created)
+                    {
+                        needs_optimization = true;
+                    }
+
+                    mapper_status = MapperStatus::VALID;
+                    break;
                 }
-                renderMapObjects(object_renders, frame, camera_pose);
-                mapper_status = MapperStatus::VALID;
             }
+            default: break;
         }
-        else
+
+        auto deleted_object_keys = map_->deleteBadObjects();
+        spdlog::info("Removed all objects");
+        //! TODO: Delete factors and values associated with the key
+        /* for (const auto& object_key : deleted_object_keys) */
+        /* { */
+        /*     if(pose_values_.exists(object_key)) */
+        /*     { */
+        /*         pose_values_.erase(object_key); */
+        /*     } */
+        /* } */
+
+        if (shouldCreateNewBackground(curr_timestamp_))
         {
-            if (mapper_payload.tracker_status_ == TrackerStatus::VALID)
-            {
-                const Eigen::Matrix4d camera_pose = T_camera_to_world_trajectory_.back() * relative_camera_pose;
-                T_camera_to_world_trajectory_.push_back(camera_pose);
+            map_->addBackground(createBackground(frame, map_->getCameraPose(curr_timestamp_)));
+            spdlog::info("Added new background object into the map");
+        }
 
-                if (curr_timestamp_ == prev_keyframe_timestamp && instance_images.size() >= 2)
-                {
-                    auto camera_key                   = gtsam::Symbol('c', curr_timestamp_);
-                    spdlog::info("Current camera key: {}", camera_key);
-                    auto prev_prev_keyframe_timestamp = *(keyframe_timestamps_.end()-2);
-                    spdlog::info("prev_prev_keyframe_timestamp: {}", prev_prev_keyframe_timestamp);
-                    auto prev_camera_key              = gtsam::Symbol('c', prev_prev_keyframe_timestamp);
-                    spdlog::info("prev_camera_key: {}", prev_camera_key);
-                    auto T_camera_to_prev_keyframe =
-                        T_camera_to_world_trajectory_.at(prev_prev_keyframe_timestamp).inverse() * camera_pose;
-                    spdlog::info("Relative pose: {}", T_camera_to_prev_keyframe);
-                    auto between_noise = noiseModel::Diagonal::Variances(Vector6::Constant(1e-3));
-
-                    //! TODO: Add camera poses to the posegraph
-                    object_pose_graph_.emplace_shared<BetweenFactor<Pose3>>(
-                        camera_key, prev_camera_key, Pose3(T_camera_to_prev_keyframe), between_noise);
-                    object_pose_values_.insert(camera_key, Pose3(camera_pose));
-                }
-
-                TSDFObject::Ptr active_bg = map_->getBackground();
-                active_bg->integrate(frame, InstanceImage(frame.width_, frame.height_), camera_pose);
-
-                //! TODO: Raycast only those objects in the camera frustum
-                renderMapObjects(object_renders, frame, camera_pose);
-
-                // Project the masks to current frame
-                auto T_keyframe_to_world             = T_camera_to_world_trajectory_.at(prev_keyframe_timestamp - 1);
-                auto T_camera_to_world               = T_camera_to_world_trajectory_.back();
-                Eigen::Matrix4d T_keyframe_to_camera = T_camera_to_world.inverse() * T_keyframe_to_world;
-                cuda::TransformCuda T_keyframe_to_camera_cuda;
-                T_keyframe_to_camera_cuda.FromEigen(T_keyframe_to_camera);
-                cuda::PinholeCameraIntrinsicCuda intrinsic_cuda(frame.intrinsic_);
-
-                InstanceImages frame_instance_images;
-                std::vector<bool> frame_instance_matches;
-                frame_instance_images.reserve(instance_images.size());
-                frame_instance_matches.reserve(instance_images.size());
-                for (const auto& instance_image : instance_images)
-                {
-                    //! Skip for background object
-                    if (instance_image.label_ == 0)
-                    {
-                        continue;
-                    }
-                    //! Project the mask from maskframe to current frame
-                    cuda::ImageCuda<uchar, 1> src_mask;
-                    src_mask.Upload(instance_image.maskb_);
-
-                    cv::Mat depthf;
-                    cv::rgbd::rescaleDepth(frame.depth_, CV_32F, depthf);
-                    cuda::ImageCuda<float, 1> depth;
-                    depth.Upload(depthf);
-
-                    // TODO: Use geometric segmentation
-                    auto proj_mask_cuda = cuda::SegmentationCuda::TransformAndProject(
-                        src_mask, depth, T_keyframe_to_camera_cuda, intrinsic_cuda);
-                    cv::Mat proj_mask = proj_mask_cuda.DownloadMat();
-
-                    BoundingBox proj_bbox;
-                    transform_project_bbox(instance_image.bbox_, proj_bbox, depthf, frame.intrinsic_, T_keyframe_to_camera);
-                    frame_instance_images.emplace_back(proj_mask, proj_bbox, instance_image.label_, instance_image.score_);
-                    frame_instance_matches.emplace_back(false);
-                }
-
-                for (const auto& object_pair : *object_renders)
-                {
-                    const ObjectId& id                  = object_pair.first;
-                    const ObjectRender& object_render   = object_pair.second;
-                    const cv::Mat& object_raycast_color = object_render.color_map_;
-                    TSDFObject::Ptr object              = map_->getObject(id);
-
-                    if (object->isBackground())
-                        continue;
-
-                    auto iter = associateObjects(id, object_raycast_color, frame_instance_images, frame_instance_matches);
-
-                    if (iter == frame_instance_images.end())
-                    {
-                        //! Increment the non-existence count
-                        object->non_existence_++;
-                    }
-                    else
-                    {
-                        object->existence_++;
-                        object->integrate(frame, *iter, camera_pose);
-
-                        if (curr_timestamp_ == prev_keyframe_timestamp && instance_images.size() >= 2)
-                        {
-                            auto camera_key         = gtsam::Symbol('c', prev_keyframe_timestamp);
-                            auto object_key         = object->hash(id);
-                            auto T_object_to_camera = camera_pose.inverse() * object->getPose();
-                            //! TODO: Add correct variances for heaven's sake!!!
-                            auto between_noise = noiseModel::Diagonal::Variances(Vector6::Constant(1e-3));
-                            object_pose_graph_.emplace_shared<BetweenFactor<Pose3>>(
-                                camera_key, object_key, Pose3(T_object_to_camera), between_noise);
-                        }
-                    }
-                    spdlog::debug("Object existence: {}, non-existence: {}", object->existence_, object->non_existence_);
-                }
-
-                spdlog::info("Number of frame instance matches: {}", frame_instance_matches.size());
-
-                // Create new objects for unmatched instance images
-                for (size_t i = 0; i < frame_instance_matches.size(); i++)
-                {
-                    if (!frame_instance_matches.at(i))
-                    {
-                        spdlog::info("Creating object: {}", i);
-                        spdlog::info("Camera pose: {}", camera_pose);
-                        spdlog::info("frame_instance_images size: {}, frame_instance_matches size: {}",
-                                     frame_instance_images.size(),
-                                     frame_instance_matches.size());
-                        spdlog::info("instance image score: {}", frame_instance_images.at(i).score_);
-                        spdlog::info("mask size: {}", cv::countNonZero(frame_instance_images.at(i).maskb_));
-                        auto object = createObject(frame, frame_instance_images.at(i), camera_pose);
-                        spdlog::info("Created object: {}", i);
-                        if (!object)
-                        {
-                            spdlog::debug("Object creation failed!");
-                            continue;
-                        }
-                        auto object_key = object->hash(object->id_);
-                        //! Check: Should return the same camera key
-                        auto camera_key = gtsam::Symbol('c', prev_keyframe_timestamp);
-
-                        auto between_noise = noiseModel::Diagonal::Variances(Vector6::Constant(1e-3));
-                        //! TODO: Some asserts for invalid maskframe_timestamps?
-                        auto T_object_to_keyframe = T_keyframe_to_world.inverse() * object->getPose();
-
-                        //! Relative pose with previous keyframe (but since background is identity)
-                        object_pose_graph_.emplace_shared<BetweenFactor<Pose3>>(
-                            camera_key, object_key, Pose3(T_object_to_keyframe), between_noise);
-
-                        object_pose_values_.insert(object_key, Pose3(object->getPose()));
-
-                        map_->addObject(object);
-                        spdlog::info("Added object into the map");
-                    }
-                    else
-                    {
-                        spdlog::debug("Object instance {} matched", i);
-                    }
-                }
-
+        if (needs_optimization)
+        {
+            spdlog::info("needs optimization");
 #ifdef OSLAM_DEBUG_VIS
-                object_pose_graph_.print("Factor Graph:\n");
-                object_pose_values_.print("Values to optimize: \n");
+            pose_graph_.print("Factor Graph:\n");
+            pose_values_.print("Values to optimize: \n");
+            spdlog::info("Number of values in the graph: {}", pose_values_.size());
+            spdlog::info("Number of objects in the map: {}", map_->getNumObjects());
+            spdlog::info("Number of keyframes: {}", keyframe_timestamps_.size());
 #endif
-                // Evaluate remove objects with very low existence probability
-                std::vector<ObjectId> to_delete_objects;
-                for (const auto& object_pair : map_->id_to_object_)
-                {
-                    const ObjectId id           = object_pair.first;
-                    TSDFObject::ConstPtr object = object_pair.second;
+            gtsam::LevenbergMarquardtOptimizer optimizer = gtsam::LevenbergMarquardtOptimizer(pose_graph_, pose_values_);
+            spdlog::info("Created optimizer");
+            gtsam::Values new_values = optimizer.optimize();
+            spdlog::info("Graph error before optimize: {}", pose_graph_.error(pose_values_));
+            spdlog::info("Graph error after optimize: {}", pose_graph_.error(new_values));
+            map_->update(new_values, keyframe_timestamps_);
+            pose_values_ = new_values;
 
-                    if (object->isBackground())
-                    {
-                        continue;
-                    }
-
-                    double existence_expect = object->getExistExpectation();
-                    spdlog::debug("{} -> Existence expectation: {}", id, existence_expect);
-
-                    if (existence_expect < 0.2)
-                    {
-                        to_delete_objects.push_back(id);
-                    }
-                }
-
-                for (const auto& object_id : to_delete_objects)
-                {
-                    spdlog::info("Removing object {}", object_id);
-                    map_->removeObject(object_id);
-                }
-
-                if (shouldCreateNewBackground(frame.timestamp_))
-                {
-                    TSDFObject::Ptr new_bg = createBackground(frame, camera_pose);
-                    map_->addObject(new_bg, true);
-                    spdlog::info("Added new background object into the map");
-                }
-
-                if (prev_keyframe_timestamp == curr_timestamp_)
-                {
-                    std::unique_ptr<gtsam::LevenbergMarquardtOptimizer> optimizer =
-                        std::make_unique<gtsam::LevenbergMarquardtOptimizer>(object_pose_graph_, object_pose_values_);
-                    gtsam::Values new_values = optimizer->optimize();
-                    spdlog::info("Graph error before optimize: {}", object_pose_graph_.error(object_pose_values_));
-                    spdlog::info("Graph error after optimize: {}", object_pose_graph_.error(new_values));
-                    updateMap(new_values);
-
-                    //! Create new background here with updated keyframe_timestamp_ pose
-                    spdlog::info("Optimized latest pose: {}", T_camera_to_world_trajectory_.back());
-                    TSDFObject::Ptr new_bg =
-                        createBackground(frame, T_camera_to_world_trajectory_.back());
-                    map_->addObject(new_bg, true);
-                }
-            }
-            mapper_status = MapperStatus::VALID;
+            //! Create new background here with updated keyframe_timestamp_ pose
+            spdlog::info("Optimized latest pose: {}", map_->getCameraPose(curr_timestamp_));
+            map_->addBackground(createBackground(frame, map_->getCameraPose(curr_timestamp_)));
         }
-        return std::make_unique<RendererInput>(
-            curr_timestamp_, mapper_status, std::move(object_renders), frame, T_camera_to_world_trajectory_);
+        spdlog::info("Returning from mapper");
+        return std::make_unique<RendererInput>(curr_timestamp_, mapper_status, object_renders, frame);
     }
 
-    TSDFObject::Ptr Mapper::createBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose)
+    void Mapper::initializeMapAndGraph(const Frame& frame,
+                                       const InstanceImages& instance_images,
+                                       const Eigen::Matrix4d& camera_pose)
+    {
+        //! Add to the map
+        map_->addCameraPose(camera_pose);
+        spdlog::info("Added camera pose");
+
+        //! Add prior and value to the graph
+        addPriorFactor(curr_timestamp_, camera_pose);
+        addCameraValue(curr_timestamp_, camera_pose);
+        spdlog::info("Added prior factor and value in pose graph");
+
+        //! Create background for tracking
+        map_->addBackground(createBackground(frame, camera_pose));
+
+        // Add each mask instance in the first image as object in map
+        for (const auto& instance_image : instance_images)
+        {
+            TSDFObject::UniquePtr object = createObject(frame, instance_image, camera_pose);
+            spdlog::info("Created object");
+            if (!object)
+            {
+                spdlog::debug("Object construction failed!");
+                continue;
+            }
+
+            auto object_key                    = object->hash(object->id_);
+            Eigen::Matrix4d T_object_to_camera = camera_pose.inverse() * object->getPose();
+
+            //! Add between factor and value to the graph
+            addObjectCameraBetweenFactor(object_key, curr_timestamp_, T_object_to_camera);
+            addObjectValue(object_key, object->getPose());
+
+            //! Add object to the map
+            map_->addObject(std::move(object));
+        }
+    }
+
+    void Mapper::projectInstanceImages(const Timestamp& keyframe_timestamp,
+                                       const Frame& frame,
+                                       const InstanceImages& instance_images,
+                                       InstanceImages& projected_instance_images)
+    {
+        auto T_keyframe_to_world             = map_->getCameraPose(keyframe_timestamp);
+        auto T_camera_to_world               = map_->getCameraPose(curr_timestamp_);
+        Eigen::Matrix4d T_keyframe_to_camera = T_camera_to_world.inverse() * T_keyframe_to_world;
+        cuda::TransformCuda T_keyframe_to_camera_cuda;
+        T_keyframe_to_camera_cuda.FromEigen(T_keyframe_to_camera);
+        cuda::PinholeCameraIntrinsicCuda intrinsic_cuda(frame.intrinsic_);
+
+        projected_instance_images.reserve(instance_images.size());
+        for (const auto& instance_image : instance_images)
+        {
+            //! Skip for background object
+            if (instance_image.label_ == 0)
+            {
+                continue;
+            }
+            //! Project the mask from maskframe to current frame
+            cuda::ImageCuda<uchar, 1> src_mask;
+            src_mask.Upload(instance_image.maskb_);
+
+            //! Scale the depth image by depth factor = 1000 and convert to float image
+            cv::Mat depthf;
+            cv::rgbd::rescaleDepth(frame.depth_, CV_32F, depthf);
+            cuda::ImageCuda<float, 1> depth;
+            depth.Upload(depthf);
+
+            // TODO: Use geometric segmentation
+            auto proj_mask_cuda =
+                cuda::SegmentationCuda::TransformAndProject(src_mask, depth, T_keyframe_to_camera_cuda, intrinsic_cuda);
+            cv::Mat proj_mask = proj_mask_cuda.DownloadMat();
+
+            BoundingBox proj_bbox;
+            transform_project_bbox(instance_image.bbox_, proj_bbox, depthf, frame.intrinsic_, T_keyframe_to_camera);
+            projected_instance_images.emplace_back(proj_mask, proj_bbox, instance_image.label_, instance_image.score_);
+        }
+    }
+
+    std::vector<bool> Mapper::integrateObjects(const Renders& object_renders,
+                                               const InstanceImages& frame_instance_images,
+                                               const Frame& frame,
+                                               const Eigen::Matrix4d& camera_pose)
+    {
+        //! NOTE: Object renders size is 1 less than frame_instance_images size
+        std::vector<bool> frame_instance_matches(frame_instance_images.size(), false);
+        spdlog::info("Frame instance images size: {}, Frame instance matches size: {}",
+                     frame_instance_images.size(),
+                     frame_instance_matches.size());
+        for (const auto& render_pair : object_renders)
+        {
+            const ObjectId& id       = render_pair.first;
+            const Render& render     = render_pair.second;
+            const cv::Mat& color_map = render.color_map_;
+
+            auto iter = associateObjects(id, color_map, frame_instance_images, frame_instance_matches);
+            //! No match
+            if (iter == frame_instance_images.end())
+            {
+                //! Increment the non-existence count
+                map_->incrementNonExistence(id);
+            }
+            //! Match
+            else
+            {
+                map_->incrementExistence(id);
+                map_->integrateObject(id, frame, *iter, camera_pose);
+                if (curr_timestamp_ == keyframe_timestamps_.back())
+                {
+                    Eigen::Matrix4d T_object_to_camera = camera_pose.inverse() * map_->getObjectPose(id);
+
+                    addObjectCameraBetweenFactor(map_->getObjectHash(id), curr_timestamp_, T_object_to_camera);
+                }
+            }
+        }
+        return frame_instance_matches;
+    }
+
+    unsigned int Mapper::createUnmatchedObjects(const std::vector<bool>& instance_matches,
+                                                const InstanceImages& instance_images,
+                                                const Frame& frame,
+                                                const Eigen::Matrix4d& camera_pose)
+    {
+        unsigned int objects_created = 0;
+        for (size_t i = 0; i < instance_matches.size(); i++)
+        {
+            if (!instance_matches.at(i))
+            {
+                TSDFObject::UniquePtr object = createObject(frame, instance_images.at(i), camera_pose);
+                if (!object)
+                {
+                    spdlog::debug("Object creation failed!");
+                    continue;
+                }
+                auto object_key                      = object->hash(object->id_);
+                auto prev_keyframe_timestamp         = keyframe_timestamps_.back();
+                Eigen::Matrix4d T_keyframe_to_world  = map_->getCameraPose(prev_keyframe_timestamp);
+                Eigen::Matrix4d T_object_to_keyframe = T_keyframe_to_world.inverse() * object->getPose();
+
+                addObjectCameraBetweenFactor(object_key, keyframe_timestamps_.back(), T_object_to_keyframe);
+                addObjectValue(object_key, object->getPose());
+                spdlog::info("Added object into the map");
+                map_->addObject(std::move(object));
+                objects_created++;
+            }
+            else
+            {
+                spdlog::debug("Object instance {} matched", i);
+            }
+        }
+        return objects_created;
+    }
+
+    TSDFObject::UniquePtr Mapper::createBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose)
     {
         using namespace open3d;
-        // Create default instance image for background
+        //! Create default instance image for background
         InstanceImage background_instance(frame.width_, frame.height_);
         ObjectId background_id(0, frame.timestamp_, BoundingBox({ 0, 0, frame.width_ - 1, frame.height_ - 1 }));
-        TSDFObject::Ptr background =
-            std::make_shared<TSDFObject>(background_id, frame, background_instance, camera_pose, BACKGROUND_RESOLUTION);
+
+        TSDFObject::UniquePtr background =
+            std::make_unique<TSDFObject>(background_id, frame, background_instance, camera_pose, BACKGROUND_RESOLUTION);
 
         background->integrate(frame, background_instance, camera_pose);
+
         return background;
     }
 
     bool Mapper::shouldCreateNewBackground(Timestamp timestamp)
     {
-        auto active_bg   = map_->getBackground();
-        double vis_ratio = active_bg->getVisibilityRatio(timestamp);
+        double vis_ratio = map_->getBackgroundVisibilityRatio(timestamp);
         spdlog::debug("Visibility Ratio: {}", vis_ratio);
 
         if (vis_ratio < 0.2)
@@ -399,9 +399,9 @@ namespace oslam
         return false;
     }
 
-    TSDFObject::Ptr Mapper::createObject(const Frame& frame,
-                                         const InstanceImage& instance_image,
-                                         const Eigen::Matrix4d& camera_pose)
+    TSDFObject::UniquePtr Mapper::createObject(const Frame& frame,
+                                               const InstanceImage& instance_image,
+                                               const Eigen::Matrix4d& camera_pose)
     {
         if (instance_image.score_ < SCORE_THRESHOLD)
         {
@@ -429,51 +429,22 @@ namespace oslam
         }
 
         ObjectId object_id(instance_image.label_, frame.timestamp_, instance_image.bbox_);
-        spdlog::info("Creating object ID: {}", object_id);
-        TSDFObject::Ptr object =
-            std::make_shared<TSDFObject>(object_id, frame, instance_image, camera_pose, OBJECT_RESOLUTION);
-        spdlog::info("Created object: {} Integrating now", object_id);
+
+        TSDFObject::UniquePtr object =
+            std::make_unique<TSDFObject>(object_id, frame, instance_image, camera_pose, OBJECT_RESOLUTION);
+
         object->integrate(frame, instance_image, camera_pose);
-        spdlog::info("Created object: {} Integrated", object_id);
+
         return object;
     }
 
-    void Mapper::renderMapObjects(ObjectRendersUniquePtr& object_renders,
-                                  const Frame& frame,
-                                  const Eigen::Matrix4d& camera_pose)
-    {
-        using namespace open3d;
-        object_renders->reserve(map_->id_to_object_.size());
-        for (auto& object_pair : map_->id_to_object_)
-        {
-            const ObjectId& id      = object_pair.first;
-            TSDFObject::Ptr& object = object_pair.second;
-
-            cuda::ImageCuda<float, 3> vertex;
-            cuda::ImageCuda<float, 3> normal;
-            cuda::ImageCuda<uchar, 3> color;
-
-            vertex.Create(frame.width_, frame.height_);
-            normal.Create(frame.width_, frame.height_);
-            color.Create(frame.width_, frame.height_);
-
-            object->raycast(vertex, normal, color, camera_pose);
-
-            cv::Mat color_map  = color.DownloadMat();
-            cv::Mat vertex_map = vertex.DownloadMat();
-            cv::Mat normal_map = normal.DownloadMat();
-
-            object_renders->emplace(id, ObjectRender(color_map, vertex_map, normal_map));
-        }
-    }
-
     InstanceImages::const_iterator Mapper::associateObjects(const ObjectId& id,
-                                                            const cv::Mat& object_raycast,
+                                                            const cv::Mat& object_render_color,
                                                             const InstanceImages& instance_images,
                                                             std::vector<bool>& instance_matches)
     {
         cv::Mat gray;
-        cv::cvtColor(object_raycast, gray, cv::COLOR_BGR2GRAY);
+        cv::cvtColor(object_render_color, gray, cv::COLOR_BGR2GRAY);
         cv::Mat mask;
         cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY);
 
@@ -509,28 +480,47 @@ namespace oslam
         return instance_images.end();
     }
 
-    void Mapper::updateMap(const gtsam::Values& values)
+    inline void Mapper::addPriorFactor(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose)
     {
-        for (auto& object_pair : map_->id_to_object_)
-        {
-            const ObjectId& id      = object_pair.first;
-            TSDFObject::Ptr& object = object_pair.second;
-
-            if (values.exists(object->hash(id)))
-            {
-                gtsam::Pose3 updatedPose = values.at<gtsam::Pose3>(object->hash(id));
-                object->setPose(updatedPose.matrix());
-            }
-        }
-        for (const auto& keyframe_timestamp : keyframe_timestamps_)
-        {
-            auto camera_key = gtsam::Symbol('c', keyframe_timestamp);
-            if (values.exists(camera_key))
-            {
-                gtsam::Pose3 updatedPose                                 = values.at<gtsam::Pose3>(camera_key);
-                T_camera_to_world_trajectory_.at(keyframe_timestamp - 1) = updatedPose.matrix();
-            }
-        }
+        auto camera_key = gtsam::Symbol('c', timestamp);
+        // Prior noise of 0.01 metres (x,y,z) and 0.01 rad in (alpha, beta, gamma)
+        auto prior_noise = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector6::Constant(0.01));
+        pose_graph_.emplace_shared<gtsam::PriorFactor<gtsam::Pose3>>(camera_key, gtsam::Pose3(camera_pose), prior_noise);
     }
 
+    inline void Mapper::addCameraCameraBetweenFactor(const Timestamp& time_source_camera,
+                                                     const Timestamp& time_target_camera,
+                                                     const Eigen::Matrix4d& T_source_camera_to_target_camera)
+    {
+        auto source_camera_key = gtsam::Symbol('c', time_source_camera);
+        auto target_camera_key = gtsam::Symbol('c', time_target_camera);
+
+        //! TODO: Obtain noise from ICP
+        auto between_noise = gtsam::noiseModel::Diagonal::Variances(gtsam::Vector6::Constant(1e-3));
+        pose_graph_.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(
+            target_camera_key, source_camera_key, gtsam::Pose3(T_source_camera_to_target_camera), between_noise);
+    }
+
+    inline void Mapper::addObjectCameraBetweenFactor(const gtsam::Key& object_key,
+                                                     const Timestamp& camera_timestamp,
+                                                     const Eigen::Matrix4d& T_object_to_camera)
+    {
+        auto camera_key = gtsam::Symbol('c', camera_timestamp);
+
+        auto between_noise = gtsam::noiseModel::Diagonal::Variances(gtsam::Vector6::Constant(1e-3));
+        pose_graph_.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(
+            camera_key, object_key, gtsam::Pose3(T_object_to_camera), between_noise);
+    }
+
+    inline void Mapper::addCameraValue(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose)
+    {
+        //! TODO: Error checking
+        auto camera_key = gtsam::Symbol('c', timestamp);
+        pose_values_.insert(camera_key, gtsam::Pose3(camera_pose));
+    }
+
+    inline void Mapper::addObjectValue(const gtsam::Key& object_key, const Eigen::Matrix4d& object_pose)
+    {
+        pose_values_.insert(object_key, gtsam::Pose3(object_pose));
+    }
 }  // namespace oslam
