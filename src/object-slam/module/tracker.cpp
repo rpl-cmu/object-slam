@@ -25,8 +25,8 @@
 
 namespace oslam
 {
-    Tracker::Tracker(RendererOutputQueue* renderer_output_queue, OutputQueue* output_queue)
-        : MISO(output_queue, "Tracker"), frame_queue_("InputFrameQueue"), renderer_output_queue_(renderer_output_queue)
+    Tracker::Tracker(OutputQueue* output_queue)
+        : MISO(output_queue, "Tracker"), frame_queue_("TrackerFrameQueue"), model_queue_("TrackerModelQueue")
     {
         spdlog::debug("CONSTRUCT: Tracker");
     }
@@ -52,24 +52,24 @@ namespace oslam
         }
         else
         {
-            RendererOutput::UniquePtr renderer_output;
+            Model::UniquePtr model;
             //! Try to synchronize the ImageTransportOutputQueue and search for image with same timestamp as
             //! current frame
-            if (!syncQueue<RendererOutput::UniquePtr>(curr_timestamp_, renderer_output_queue_, &renderer_output))
+            if (!syncQueue<Model::UniquePtr>(curr_timestamp_, &model_queue_, &model))
             {
                 spdlog::error("Missing Render output with requested timestamp: {}", curr_timestamp_);
                 return nullptr;
             }
-            if (!renderer_output)
+            if (!model)
             {
-                spdlog::error("Module: {} {} returned null", name_id_, renderer_output_queue_->queue_id_);
+                spdlog::error("Module: {} {} returned null", name_id_, model_queue_.queue_id_);
                 return nullptr;
             }
             tracker_input = std::make_unique<TrackerInput>(curr_timestamp_,
                                                            *input_frame,
-                                                           renderer_output->colors_,
-                                                           renderer_output->vertices_,
-                                                           renderer_output->normals_);
+                                                           model->colors_,
+                                                           model->vertices_,
+                                                           model->normals_);
         }
         if (!tracker_input)
         {
@@ -138,10 +138,6 @@ namespace oslam
             auto odo_finish_time = Timer::toc(odo_start_time).count();
             spdlog::debug("Odometry took {} ms", odo_finish_time);
             camera_pose = prev_camera_pose * relative_camera_pose;
-
-            cv::imshow("Source frame", frame.color_);
-            cv::imshow("Model Color map", model_color_map);
-            cv::waitKey(1);
         }
 
         spdlog::debug("Current camera pose: \n{}\n", camera_pose);
@@ -155,5 +151,6 @@ namespace oslam
     {
         MISOPipelineModule::shutdownQueues();
         frame_queue_.shutdown();
+        model_queue_.shutdown();
     }
 }  // namespace oslam

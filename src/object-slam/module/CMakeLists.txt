@@ -9,4 +9,6 @@ target_sources(
   mapper.cpp
   renderer.h
   renderer.cpp
+  display.h
+  display.cpp
 )

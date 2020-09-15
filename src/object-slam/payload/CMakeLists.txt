@@ -4,4 +4,5 @@ target_sources(
   tracker_payload.h
   mapper_payload.h
   renderer_payload.h
+  display_payload.h
 )

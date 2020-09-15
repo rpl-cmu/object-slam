@@ -8,6 +8,8 @@
 #ifndef OSLAM_TRACKER_PAYLOAD_H
 #define OSLAM_TRACKER_PAYLOAD_H
 
+#include <utility>
+
 #include "object-slam/utils/pipeline_payload.h"
 
 #include "object-slam/struct/frame.h"
@@ -15,6 +17,22 @@
 
 namespace oslam
 {
+    struct Model : public PipelinePayload
+    {
+       public:
+        OSLAM_POINTER_TYPEDEFS(Model);
+        Model(Timestamp timestamp, cv::Mat colors, cv::Mat vertices, cv::Mat normals)
+            : PipelinePayload(timestamp), colors_(std::move(colors)), vertices_(std::move(vertices)), normals_(std::move(normals))
+        {
+        }
+        ~Model() override = default;
+
+       public:
+        const cv::Mat colors_;
+        const cv::Mat vertices_;
+        const cv::Mat normals_;
+    };
+
     /*! \class TrackerInput
      *  \brief Brief class description
      *

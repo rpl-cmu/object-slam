@@ -32,10 +32,10 @@ namespace oslam {
         }
 
         m_curr_timestamp = p_frame->m_timestamp;
-        const bool is_maskframe = p_frame->is_maskframe();
+        const bool is_keyframe = p_frame->is_keyframe_;
 
         Segmenter::InputUniquePtr p_segmenter_payload;
-        if (!is_maskframe)
+        if (!is_keyframe)
         {
             spdlog::debug("SegmenterInputPayload: frame + old mask");
             //! Simply use the previous masked image to create tracker payload

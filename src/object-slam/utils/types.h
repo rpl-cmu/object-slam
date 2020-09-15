@@ -11,6 +11,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <Eigen/Eigen>
 
 #include <fmt/ostream.h>
 
@@ -22,6 +23,7 @@ namespace oslam
 
     using BoundingBox = std::array<int, 4>;
 
+    using PoseTrajectory = std::vector<Eigen::Matrix4d, Eigen::aligned_allocator<Eigen::Matrix4d>>;
     //! Hashable object id struct
     struct ObjectId
     {

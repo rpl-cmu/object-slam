@@ -35,14 +35,14 @@ namespace oslam
                        const cv::Mat& color,
                        const cv::Mat& depth,
                        const camera::PinholeCameraIntrinsic& intrinsic,
-                       bool is_maskframe = false)
+                       bool is_keyframe = false)
             : PipelinePayload(timestamp),
               width_(color.cols),
               height_(color.rows),
               color_(color),
               depth_(depth),
               intrinsic_(intrinsic),
-              is_maskframe_(is_maskframe){};
+              is_keyframe_(is_keyframe){};
 
         ~Frame() override = default;
 
@@ -54,12 +54,7 @@ namespace oslam
               color_(frame.color_),
               depth_(frame.depth_),
               intrinsic_(frame.intrinsic_),
-              is_maskframe_(frame.is_maskframe_){};
-        Frame& operator=(const Frame& frame) = default;
-
-        //! Move constructor and assignment TODO: Required?
-        Frame(Frame&& frame) = default;
-        Frame& operator=(Frame&& frame) = default;
+              is_keyframe_(frame.is_keyframe_){};
 
        public:
         //! Frame size
@@ -69,7 +64,7 @@ namespace oslam
         const cv::Mat color_;
         const cv::Mat depth_;
         const camera::PinholeCameraIntrinsic intrinsic_;
-        const bool is_maskframe_ = { false };                 //!< Does frame have instance segmentation
+        const bool is_keyframe_ = { false };                 //!< Does frame have instance segmentation
         Eigen::Matrix4d pose_ = Eigen::Matrix4d::Identity();  //!< Pose of the frame to current local submap TODO: Required?
     };
 }  // namespace oslam

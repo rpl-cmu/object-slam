@@ -8,9 +8,11 @@
 #ifndef OSLAM_RENDERER_H
 #define OSLAM_RENDERER_H
 
+#include <deque>
 #include "object-slam/utils/macros.h"
 #include "object-slam/utils/pipeline_module.h"
 
+#include "object-slam/payload/display_payload.h"
 #include "object-slam/payload/renderer_payload.h"
 #include "object-slam/struct/map.h"
 
@@ -21,26 +23,33 @@ namespace oslam
      *
      *  Detailed description
      */
-    class Renderer : public SISOPipelineModule<RendererInput, RendererOutput>
+    class Renderer : public SIMOPipelineModule<RendererInput, RendererOutput>
     {
        public:
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
         OSLAM_POINTER_TYPEDEFS(Renderer);
         OSLAM_DELETE_COPY_CONSTRUCTORS(Renderer);
+        OSLAM_DELETE_MOVE_CONSTRUCTORS(Renderer);
 
-        using SISO = SISOPipelineModule<RendererInput, RendererOutput>;
+        using SIMO = SIMOPipelineModule<RendererInput, RendererOutput>;
 
-        Renderer(Map::Ptr map, InputQueue* input_queue, OutputQueue* output_queue);
+        Renderer(const Map::Ptr& map, InputQueue* input_queue);
         virtual ~Renderer() = default;
 
         virtual OutputUniquePtr runOnce(InputUniquePtr input) override;
 
-       protected:
+       private:
+        static std::vector<cv::Affine3d> fillCameraTrajectory(const PoseTrajectory& camera_trajectory);
+        WidgetPtr render3dTrajectory(const std::vector<cv::Affine3d>& camera_trajectory_3d);
+        WidgetPtr render3dFrustumTraj(const std::vector<cv::Affine3d>& camera_trajectory_3d,
+                                      const Eigen::Matrix3d& intrinsic_matrix,
+                                      const size_t& num_prev_frustums);
+        WidgetPtr render3dFrustumWithColorMap(const std::vector<cv::Affine3d>& camera_trajectory_3d,
+                                              const Eigen::Matrix3d& intrinsic_matrix,
+                                              const cv::Mat& color_map);
         Timestamp curr_timestamp_ = 0;
 
         Map::Ptr map_;
-        cuda::ImageCuda<float, 3> model_vertices_cuda_;
-        cuda::ImageCuda<float, 3> model_normals_cuda_;
-        cuda::ImageCuda<uchar, 3> model_colors_cuda_;
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_RENDERER_H */

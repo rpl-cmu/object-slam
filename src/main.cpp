@@ -9,9 +9,9 @@
 
 #include <CLI/CLI.hpp>
 
-#include "controller/controller.h"
+#include "object-slam/controller/controller.h"
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     CLI::App app{ "Object SLAM" };
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] %^[%L] %v%$");
@@ -22,6 +22,7 @@ int main(int argc, char *argv[])
     app.add_flag(
         "-d, --debug", [](size_t /*unused*/) { spdlog::set_level(spdlog::level::debug); }, "Print debug logs");
 
+    spdlog::set_error_handler([](const std::string& msg) -> void { std::cerr << "Error in SPDLOG: " << msg << std::endl; raise(SIGABRT);});
     CLI11_PARSE(app, argc, argv);
 
     oslam::Controller controller(dataset_path);

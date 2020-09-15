@@ -57,9 +57,10 @@ namespace oslam
                      const Eigen::Matrix4d &camera_pose);
 
         [[nodiscard]] Eigen::Matrix4d getPose() const { return pose_; }
+        void setPose(const Eigen::Matrix4d& pose) { std::scoped_lock<std::mutex> lock_setpose(mutex_); pose_ = pose; }
         [[nodiscard]] cuda::PinholeCameraIntrinsicCuda getIntrinsicCuda() const { return intrinsic_cuda_; }
 
-        [[nodiscard]] double getExistExpectation() const { return existence_ / (existence_ + non_existence_); }
+        [[nodiscard]] double getExistExpectation() const { return double(existence_) / double(existence_ + non_existence_); }
 
         [[nodiscard]] double getVisibilityRatio(Timestamp timestamp) const;
 
