@@ -187,9 +187,7 @@ namespace oslam
         auto handle_renderer        = std::async(std::launch::async, &oslam::Renderer::run, renderer_);
         auto handle_shutdown        = std::async(std::launch::async, &oslam::Controller::shutdownWhenComplete, this);
 
-        //! TODO: Should this be asynchronously called?
         display_->run();
-        /* auto handle_display = std::async(std::launch::deferred, &oslam::Display::run, display_); */
 
         handle_shutdown.get();
         spdlog::info("Shutdown successful: {}", handle_shutdown.get());

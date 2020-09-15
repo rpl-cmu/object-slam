@@ -67,5 +67,24 @@ namespace oslam
         const bool is_keyframe_ = { false };                 //!< Does frame have instance segmentation
         Eigen::Matrix4d pose_ = Eigen::Matrix4d::Identity();  //!< Pose of the frame to current local submap TODO: Required?
     };
+
+    //!TODO: Possibly add a new file for this struct
+    struct Render
+    {
+       public:
+        OSLAM_POINTER_TYPEDEFS(Render);
+        Render(cv::Mat color_map, cv::Mat vertex_map, cv::Mat normal_map)
+            : color_map_(std::move(color_map)), vertex_map_(std::move(vertex_map)), normal_map_(std::move(normal_map))
+        {
+        }
+
+        ~Render() = default;
+        cv::Mat color_map_;
+        cv::Mat vertex_map_;
+        cv::Mat normal_map_;
+    };
+
+    using Renders          = std::vector<std::pair<ObjectId, Render>>;
+    using RendersUniquePtr = std::unique_ptr<Renders>;
 }  // namespace oslam
 #endif /* ifndef OSLAM_FRAME_H */
