@@ -22,12 +22,14 @@ namespace oslam
 
     Renderer::OutputUniquePtr Renderer::runOnce(Renderer::InputUniquePtr input)
     {
+        spdlog::info("Reached renderer runOnce");
         curr_timestamp_                         = input->timestamp_;
         const RendererInput& renderer_payload   = *input;
         const Frame& frame                      = renderer_payload.frame_;
         const Eigen::Matrix3d& intrinsic_matrix = frame.intrinsic_.intrinsic_matrix_;
         Renders all_renders                     = renderer_payload.object_renders_;
 
+        spdlog::info("Filling camera trajectory");
         std::vector<cv::Affine3d> camera_trajectory_3d = fillCameraTrajectory(map_->getCameraTrajectory());
         spdlog::info("Filled camera_trajectory");
 

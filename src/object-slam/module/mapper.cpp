@@ -170,10 +170,6 @@ namespace oslam
                         needs_optimization = true;
                     }
 
-#ifdef OSLAM_DEBUG_VIS
-                    pose_graph_.print("Factor Graph:\n");
-                    pose_values_.print("Values to optimize: \n");
-#endif
                     mapper_status = MapperStatus::VALID;
                     break;
                 }
@@ -191,18 +187,24 @@ namespace oslam
 
         if (needs_optimization)
         {
-            std::unique_ptr<gtsam::LevenbergMarquardtOptimizer> optimizer =
-                std::make_unique<gtsam::LevenbergMarquardtOptimizer>(pose_graph_, pose_values_);
+            spdlog::info("needs optimization");
+#ifdef OSLAM_DEBUG_VIS
+            pose_graph_.print("Factor Graph:\n");
+            pose_values_.print("Values to optimize: \n");
+#endif
+            gtsam::LevenbergMarquardtOptimizer optimizer = gtsam::LevenbergMarquardtOptimizer(pose_graph_, pose_values_);
             spdlog::info("Created optimizer");
-            gtsam::Values new_values = optimizer->optimize();
+            gtsam::Values new_values = optimizer.optimize();
             spdlog::info("Graph error before optimize: {}", pose_graph_.error(pose_values_));
             spdlog::info("Graph error after optimize: {}", pose_graph_.error(new_values));
             map_->update(new_values, keyframe_timestamps_);
+            pose_values_ = new_values;
 
             //! Create new background here with updated keyframe_timestamp_ pose
             spdlog::info("Optimized latest pose: {}", map_->getCameraPose(curr_timestamp_));
             map_->addBackground(createBackground(frame, map_->getCameraPose(curr_timestamp_)));
         }
+        spdlog::info("Returning from mapper");
         return std::make_unique<RendererInput>(curr_timestamp_, mapper_status, object_renders, frame);
     }
 
@@ -231,13 +233,8 @@ namespace oslam
                 continue;
             }
 
-            auto object_key         = object->hash(object->id_);
+            auto object_key                    = object->hash(object->id_);
             Eigen::Matrix4d T_object_to_camera = camera_pose.inverse() * object->getPose();
-
-            spdlog::info("Object pose: \n{}", object->getPose());
-            spdlog::info("Camera pose: \n{}", camera_pose);
-            spdlog::info("Camera pose inverse: \n{}", camera_pose.inverse());
-            spdlog::info("T_object_to_camera: \n{} ", T_object_to_camera);
 
             //! Add between factor and value to the graph
             addObjectCameraBetweenFactor(object_key, curr_timestamp_, T_object_to_camera);
@@ -322,11 +319,6 @@ namespace oslam
                 {
                     Eigen::Matrix4d T_object_to_camera = camera_pose.inverse() * map_->getObjectPose(id);
 
-                    spdlog::info("Object pose: \n{}", map_->getObjectPose(id));
-                    spdlog::info("Camera pose: \n{}", camera_pose);
-                    spdlog::info("Camera pose inverse: \n{}", camera_pose.inverse());
-                    spdlog::info("T_object_to_camera: \n{} ", T_object_to_camera);
-
                     addObjectCameraBetweenFactor(map_->getObjectHash(id), curr_timestamp_, T_object_to_camera);
                 }
             }
@@ -350,17 +342,12 @@ namespace oslam
                     spdlog::debug("Object creation failed!");
                     continue;
                 }
-                auto object_key              = object->hash(object->id_);
-                auto prev_keyframe_timestamp = keyframe_timestamps_.back();
-                Eigen::Matrix4d T_keyframe_to_world     = map_->getCameraPose(prev_keyframe_timestamp);
-                Eigen::Matrix4d T_object_to_keyframe    = T_keyframe_to_world.inverse() * object->getPose();
+                auto object_key                      = object->hash(object->id_);
+                auto prev_keyframe_timestamp         = keyframe_timestamps_.back();
+                Eigen::Matrix4d T_keyframe_to_world  = map_->getCameraPose(prev_keyframe_timestamp);
+                Eigen::Matrix4d T_object_to_keyframe = T_keyframe_to_world.inverse() * object->getPose();
 
-                spdlog::info("Object pose: \n{}", object->getPose());
-                spdlog::info("Keyframe pose: \n{}", T_keyframe_to_world);
-                spdlog::info("Keyframe pose inverse: \n{}", T_keyframe_to_world.inverse());
-                spdlog::info("T_object_to_keyframe: \n{} ", T_object_to_keyframe);
-
-                addObjectCameraBetweenFactor(keyframe_timestamps_.back(), object_key, T_object_to_keyframe);
+                addObjectCameraBetweenFactor(object_key, keyframe_timestamps_.back(), T_object_to_keyframe);
                 addObjectValue(object_key, object->getPose());
                 spdlog::info("Added object into the map");
                 objects_created++;
@@ -497,7 +484,7 @@ namespace oslam
         //! TODO: Obtain noise from ICP
         auto between_noise = gtsam::noiseModel::Diagonal::Variances(gtsam::Vector6::Constant(1e-3));
         pose_graph_.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(
-            source_camera_key, target_camera_key, gtsam::Pose3(T_source_camera_to_target_camera), between_noise);
+            target_camera_key, source_camera_key, gtsam::Pose3(T_source_camera_to_target_camera), between_noise);
     }
 
     inline void Mapper::addObjectCameraBetweenFactor(const gtsam::Key& object_key,
