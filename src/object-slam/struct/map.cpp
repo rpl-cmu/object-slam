@@ -126,11 +126,12 @@ namespace oslam
         return object->getPose();
     }
 
-    void Map::deleteBadObjects()
+    std::vector<std::uint64_t> Map::deleteBadObjects()
     {
         std::scoped_lock<std::mutex> lock_delete_objects(mutex_);
         // Evaluate remove objects with very low existence probability
         std::vector<ObjectId> to_delete_objects;
+        std::vector<std::uint64_t> to_delete_object_keys;
         for (const auto& object_pair : id_to_object_)
         {
             const ObjectId id           = object_pair.first;
@@ -142,6 +143,7 @@ namespace oslam
             if (existence_expect < 0.2)
             {
                 to_delete_objects.push_back(id);
+                to_delete_object_keys.push_back(object->hash(id));
             }
         }
         for (const auto& object_id : to_delete_objects)
@@ -149,6 +151,8 @@ namespace oslam
             spdlog::info("Removing object {}", object_id);
             removeObject(object_id);
         }
+
+        return to_delete_object_keys;
     }
 
     bool Map::removeObject(const ObjectId& id)

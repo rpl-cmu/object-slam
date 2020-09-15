@@ -59,7 +59,13 @@ namespace oslam
         std::uint64_t getObjectHash(const ObjectId& id) const;
         Eigen::Matrix4d getObjectPose(const ObjectId& id) const;
 
-        void deleteBadObjects();
+        size_t getNumObjects() const
+        {
+            std::scoped_lock<std::mutex> get_num_objects(mutex_);
+            return id_to_object_.size();
+        }
+
+        std::vector<std::uint64_t> deleteBadObjects();
 
         void incrementExistence(const ObjectId& id);
         void incrementNonExistence(const ObjectId& id);

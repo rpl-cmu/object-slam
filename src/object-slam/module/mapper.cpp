@@ -177,7 +177,16 @@ namespace oslam
             default: break;
         }
 
-        map_->deleteBadObjects();
+        auto deleted_object_keys = map_->deleteBadObjects();
+        spdlog::info("Removed all objects");
+        //! TODO: Delete factors and values associated with the key
+        /* for (const auto& object_key : deleted_object_keys) */
+        /* { */
+        /*     if(pose_values_.exists(object_key)) */
+        /*     { */
+        /*         pose_values_.erase(object_key); */
+        /*     } */
+        /* } */
 
         if (shouldCreateNewBackground(curr_timestamp_))
         {
@@ -191,6 +200,9 @@ namespace oslam
 #ifdef OSLAM_DEBUG_VIS
             pose_graph_.print("Factor Graph:\n");
             pose_values_.print("Values to optimize: \n");
+            spdlog::info("Number of values in the graph: {}", pose_values_.size());
+            spdlog::info("Number of objects in the map: {}", map_->getNumObjects());
+            spdlog::info("Number of keyframes: {}", keyframe_timestamps_.size());
 #endif
             gtsam::LevenbergMarquardtOptimizer optimizer = gtsam::LevenbergMarquardtOptimizer(pose_graph_, pose_values_);
             spdlog::info("Created optimizer");
@@ -214,10 +226,12 @@ namespace oslam
     {
         //! Add to the map
         map_->addCameraPose(camera_pose);
+        spdlog::info("Added camera pose");
 
         //! Add prior and value to the graph
         addPriorFactor(curr_timestamp_, camera_pose);
         addCameraValue(curr_timestamp_, camera_pose);
+        spdlog::info("Added prior factor and value in pose graph");
 
         //! Create background for tracking
         map_->addBackground(createBackground(frame, camera_pose));
@@ -303,7 +317,6 @@ namespace oslam
             const cv::Mat& color_map = render.color_map_;
 
             auto iter = associateObjects(id, color_map, frame_instance_images, frame_instance_matches);
-            spdlog::info("Associated object ID: {}", id);
             //! No match
             if (iter == frame_instance_images.end())
             {
@@ -350,6 +363,7 @@ namespace oslam
                 addObjectCameraBetweenFactor(object_key, keyframe_timestamps_.back(), T_object_to_keyframe);
                 addObjectValue(object_key, object->getPose());
                 spdlog::info("Added object into the map");
+                map_->addObject(std::move(object));
                 objects_created++;
             }
             else
