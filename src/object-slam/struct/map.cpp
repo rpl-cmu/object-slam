@@ -7,13 +7,15 @@
  *****************************************************************************/
 #include "map.h"
 
+#include <Cuda/Open3DCuda.h>
 #include <spdlog/spdlog.h>
 
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/inference/Symbol.h>
+#include <unordered_map>
 
-#include "object-slam/utils/utils.h"
 #include "object-slam/struct/instance_image.h"
+#include "object-slam/utils/utils.h"
 
 namespace oslam
 {
@@ -77,7 +79,10 @@ namespace oslam
         return success.second;
     }
 
-    void Map::integrateObject(const ObjectId &id, const Frame &frame, const InstanceImage &instance_image, const Eigen::Matrix4d &camera_pose)
+    void Map::integrateObject(const ObjectId& id,
+                              const Frame& frame,
+                              const InstanceImage& instance_image,
+                              const Eigen::Matrix4d& camera_pose)
     {
         std::scoped_lock<std::mutex> lock_integrate_object(mutex_);
         TSDFObject::Ptr& object = id_to_object_.at(id);
@@ -126,6 +131,48 @@ namespace oslam
         return object->getPose();
     }
 
+    void Map::getObjectBoundingBox(const ObjectId& id, Eigen::Vector3d& min_pt, Eigen::Vector3d& max_pt) const
+    {
+        const TSDFObject::Ptr& object = id_to_object_.at(id);
+        min_pt                        = object->object_min_pt_;
+        max_pt                        = object->object_max_pt_;
+    }
+
+    ObjectBoundingBoxes Map::getAllObjectBoundingBoxes() const
+    {
+        std::scoped_lock<std::mutex> lock_get_bbox(mutex_);
+        ObjectBoundingBoxes bboxes;
+        for (const auto& object_pair : id_to_object_)
+        {
+            const ObjectId& id = object_pair.first;
+            Eigen::Vector3d min_pt;
+            Eigen::Vector3d max_pt;
+            getObjectBoundingBox(id, min_pt, max_pt);
+            bboxes.emplace(id, std::make_pair(min_pt, max_pt));
+        }
+        return bboxes;
+    }
+
+    IdToObjectMesh Map::meshAllObjects() const
+    {
+        using namespace open3d::cuda;
+        std::scoped_lock<std::mutex> lock_get_mesh(mutex_);
+        IdToObjectMesh object_meshes;
+        for (const auto& object_pair : id_to_object_)
+        {
+            const ObjectId& id     = object_pair.first;
+            TSDFObject::Ptr object = object_pair.second;
+            ScalableMeshVolumeCuda object_mesher(
+                VertexType::VertexWithColor, 16, object->volume_.active_subvolume_entry_array_.size(), 500000, 1000000);
+
+            object_mesher.MarchingCubes(object->volume_);
+            auto mesh = object_mesher.mesh().Download();
+
+            object_meshes.insert(std::pair(id, mesh));
+        }
+        return object_meshes;
+    }
+
     std::vector<std::uint64_t> Map::deleteBadObjects()
     {
         std::scoped_lock<std::mutex> lock_delete_objects(mutex_);
@@ -158,7 +205,7 @@ namespace oslam
     bool Map::removeObject(const ObjectId& id)
     {
         auto it = id_to_object_.find(id);
-        if(it == id_to_object_.end())
+        if (it == id_to_object_.end())
         {
             spdlog::error("Fatal: Object to delete does not exist in the map");
             return false;
@@ -227,11 +274,10 @@ namespace oslam
             auto camera_key = gtsam::Symbol('c', keyframe_timestamp);
             if (values.exists(camera_key))
             {
-                gtsam::Pose3 updatedPose                                 = values.at<gtsam::Pose3>(camera_key);
+                gtsam::Pose3 updatedPose                      = values.at<gtsam::Pose3>(camera_key);
                 camera_trajectory_.at(keyframe_timestamp - 1) = updatedPose.matrix();
             }
         }
-
     }
 
 }  // namespace oslam

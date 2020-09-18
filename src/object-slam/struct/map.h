@@ -25,6 +25,8 @@ namespace oslam
      *  \brief A map representing a scene consists of a hashtable of object volumes, each with their own poses
      *  and hence forming a posegraph
      */
+    using ObjectBoundingBoxes = std::unordered_map<ObjectId, std::pair<Eigen::Vector3d, Eigen::Vector3d>>;
+    using IdToObjectMesh = std::unordered_map<ObjectId, std::shared_ptr<open3d::geometry::TriangleMesh>> ;
     struct Map
     {
        public:
@@ -43,7 +45,7 @@ namespace oslam
                                  const InstanceImage& instance_image,
                                  const Eigen::Matrix4d& camera_pose);
         Render renderBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose);
-        ObjectId getBackgroundId()
+        ObjectId getBackgroundId() const
         {
             std::scoped_lock<std::mutex> lock_get_bg_id(mutex_);
             return background_volume_->id_;
@@ -58,6 +60,9 @@ namespace oslam
         Renders renderObjects(const Frame& frame, const Eigen::Matrix4d& camera_pose);
         std::uint64_t getObjectHash(const ObjectId& id) const;
         Eigen::Matrix4d getObjectPose(const ObjectId& id) const;
+        ObjectBoundingBoxes getAllObjectBoundingBoxes() const;
+
+        IdToObjectMesh meshAllObjects() const;
 
         size_t getNumObjects() const
         {
@@ -79,6 +84,7 @@ namespace oslam
 
        private:
         bool removeObject(const ObjectId& id);
+        void getObjectBoundingBox(const ObjectId& id, Eigen::Vector3d& min_pt, Eigen::Vector3d& max_pt) const;
 
         TSDFObject::UniquePtr background_volume_;
         PoseTrajectory camera_trajectory_;  //! Sequence of the camera poses traversed in the map

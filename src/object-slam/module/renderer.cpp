@@ -6,7 +6,10 @@
  * Description:      Implementation file for renderer
  *****************************************************************************/
 #include "renderer.h"
+#include <Open3D/IO/ClassIO/TriangleMeshIO.h>
+#include <Open3D/Open3D.h>
 
+#include <boost/filesystem.hpp>
 #include <vector>
 #include <xtensor/xadapt.hpp>
 #include <xtensor/xarray.hpp>
@@ -33,13 +36,14 @@ namespace oslam
         std::vector<cv::Affine3d> camera_trajectory_3d = fillCameraTrajectory(map_->getCameraTrajectory());
         spdlog::info("Filled camera_trajectory");
 
-        if (renderer_payload.mapper_status_ == MapperStatus::VALID)
+        if (renderer_payload.mapper_status_ == MapperStatus::VALID || renderer_payload.mapper_status_ == MapperStatus::OPTIMIZED)
         {
             auto raycast_start_time = Timer::tic();
             spdlog::info("Mapping status is valid");
 
             Render background_render = map_->renderBackground(frame, map_->getCameraPose(curr_timestamp_));
 
+            cv::imshow("Background render", background_render.color_map_);
             spdlog::info("Rendered background");
 
             all_renders.emplace_back(map_->getBackgroundId(), background_render);
@@ -100,16 +104,26 @@ namespace oslam
                     layered_normal.at<cv::Vec3f>(row, col) = normal_array.at(layer).at<cv::Vec3f>(row, col);
                 }
             }
-            spdlog::info("Created layered render");
+            /* cv::imshow("Layered render color", layered_color); */
+            /* spdlog::info("Created layered render"); */
             Render::UniquePtr layered_render = std::make_unique<Render>(layered_color, layered_vertex, layered_normal);
+
+            RendererOutput::UniquePtr render_output =
+                std::make_unique<RendererOutput>(curr_timestamp_ + 1, std::move(layered_render));
 
             //! TODO: Mesh output should be part of RendererOutput
             WidgetPtr traj_widget = render3dTrajectory(camera_trajectory_3d);
             WidgetPtr frustum_widget =
-                render3dFrustumWithColorMap(camera_trajectory_3d, intrinsic_matrix, layered_render->color_map_);
+                render3dFrustumWithColorMap(camera_trajectory_3d, intrinsic_matrix, layered_color);
 
-            RendererOutput::UniquePtr render_output =
-                std::make_unique<RendererOutput>(curr_timestamp_ + 1, std::move(layered_render));
+            /* auto object_bboxes = map_->getAllObjectBoundingBoxes(); */
+            /* renderObjectCubes(object_bboxes, render_output->widgets_map_); */
+
+            if(renderer_payload.mapper_status_ == MapperStatus::OPTIMIZED)
+            {
+                auto object_meshes = map_->meshAllObjects();
+                renderObjectMeshes(object_meshes, render_output->widgets_map_);
+            }
 
             auto raycast_finish_time = Timer::toc(raycast_start_time).count();
 
@@ -167,8 +181,37 @@ namespace oslam
         cv::Matx33d K;
         cv::eigen2cv(intrinsic_matrix, K);
         std::unique_ptr<cv::viz::WCameraPosition> frustum_widget =
-            std::make_unique<cv::viz::WCameraPosition>(K, color_map, 1.0, cv::viz::Color::green());
+            std::make_unique<cv::viz::WCameraPosition>(K, color_map, 0.4, cv::viz::Color::green());
         frustum_widget->setPose(camera_trajectory_3d.back());
         return frustum_widget;
+    }
+
+    void Renderer::renderObjectCubes(const ObjectBoundingBoxes& object_bboxes, std::map<std::string, WidgetPtr>& widget_map)
+    {
+        for(const auto& point_pair : object_bboxes)
+        {
+            cv::Vec3d min_pt, max_pt;
+            cv::eigen2cv(point_pair.second.first, min_pt);
+            cv::eigen2cv(point_pair.second.second, max_pt);
+            std::string object_id_string = fmt::format("{}", point_pair.first);
+            widget_map.emplace(object_id_string, std::make_unique<cv::viz::WCube>(cv::Point3d(min_pt), cv::Point3d(max_pt)));
+        }
+    }
+
+    void Renderer::renderObjectMeshes(const IdToObjectMesh& object_meshes, std::map<std::string, WidgetPtr>& widget_map)
+    {
+        for(const auto& mesh_pair : object_meshes)
+        {
+            cv::Mat colors, vertices, polygons;
+            const auto& mesh = mesh_pair.second;
+            std::string object_id_string = fmt::format("{}temp.ply", mesh_pair.first);
+            io::WriteTriangleMesh(object_id_string, *mesh);
+
+            auto cv_mesh = cv::viz::Mesh::load(object_id_string);
+            auto cv_mesh_widget = std::make_unique<cv::viz::WMesh>(cv_mesh);
+            boost::filesystem::remove(object_id_string);
+
+            widget_map.emplace(object_id_string, std::move(cv_mesh_widget));
+        }
     }
 }  // namespace oslam

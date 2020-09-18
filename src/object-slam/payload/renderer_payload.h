@@ -25,7 +25,8 @@ namespace oslam
     enum class MapperStatus
     {
         VALID   = 0,
-        INVALID = 1
+        OPTIMIZED = 1,
+        INVALID = 2
     };
 
     struct RendererInput : public PipelinePayload

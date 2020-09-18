@@ -71,23 +71,27 @@ namespace oslam
         const ObjectId id_;             //!< Const public object ID Cannot be modified
         std::hash<ObjectId> hash;  //!< Functor for obtaining hash from object ID
 
-        std::atomic_int existence_     = 1;
-        std::atomic_int non_existence_ = 1;
-
        private:
         constexpr static int SUBVOLUME_RES                = 16;  //!< Each subvolume unit has 16^3 voxels
-        constexpr static float VOLUME_SIZE_SCALE          = 0.9F;
+        constexpr static float VOLUME_SIZE_SCALE          = 0.7F;
         constexpr static float TSDF_TRUNCATION_SCALE      = 5.0F;
         constexpr static int RETROSPECT_VISIBILITY_THRESH = 5;
 
-        std::mutex mutex_;              //!< Protection against integration/raycasting from multiple threads
-        open3d::camera::PinholeCameraIntrinsic intrinsic_;
-        InstanceImage instance_image_;  //!< Object semantic information
-        open3d::cuda::ScalableTSDFVolumeCuda volume_;
         int resolution_;                //!< Resolution for the object volume (about 128^3 voxels)
-        open3d::cuda::PinholeCameraIntrinsicCuda intrinsic_cuda_;
+        InstanceImage instance_image_;  //!< Object semantic information
         Eigen::Matrix4d pose_;          //!< Object pose w.r.t world frame T_o_w
+        open3d::camera::PinholeCameraIntrinsic intrinsic_;
+        open3d::cuda::PinholeCameraIntrinsicCuda intrinsic_cuda_;
+        std::mutex mutex_;              //!< Protection against integration/raycasting from multiple threads
+        open3d::cuda::ScalableTSDFVolumeCuda volume_;
 
+        std::atomic_int existence_     = 1;
+        std::atomic_int non_existence_ = 1;
+
+        Eigen::Vector3d object_max_pt_;
+        Eigen::Vector3d object_min_pt_;
+
+        friend struct Map;
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_OBJECT_H */

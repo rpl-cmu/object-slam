@@ -47,6 +47,9 @@ namespace oslam
         WidgetPtr render3dFrustumWithColorMap(const std::vector<cv::Affine3d>& camera_trajectory_3d,
                                               const Eigen::Matrix3d& intrinsic_matrix,
                                               const cv::Mat& color_map);
+
+        void renderObjectCubes(const ObjectBoundingBoxes& object_bboxes, std::map<std::string, WidgetPtr>& widget_map);
+        void renderObjectMeshes(const IdToObjectMesh& object_meshes, std::map<std::string, WidgetPtr>& widget_map);
         Timestamp curr_timestamp_ = 0;
 
         Map::Ptr map_;

@@ -51,9 +51,9 @@ namespace oslam
         pose_                   = camera_pose * pose_;
 
         // Appropriately size the voxel_length of volume for appropriate resolution of the object
-        Eigen::Vector3d object_max = object_point_cloud.GetMaxBound();
-        Eigen::Vector3d object_min = object_point_cloud.GetMinBound();
-        float voxel_length         = VOLUME_SIZE_SCALE * float((object_max - object_min).maxCoeff() / resolution);
+        object_max_pt_ = Eigen::Affine3d(pose_) * object_point_cloud.GetMaxBound();
+        object_min_pt_ = Eigen::Affine3d(pose_) * object_point_cloud.GetMinBound();
+        float voxel_length         = VOLUME_SIZE_SCALE * float((object_max_pt_ - object_min_pt_).maxCoeff() / resolution);
 
         spdlog::debug("Volume pose\n {}", pose_);
         spdlog::debug("Voxel length: {}", voxel_length);

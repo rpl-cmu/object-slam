@@ -215,6 +215,7 @@ namespace oslam
             //! Create new background here with updated keyframe_timestamp_ pose
             spdlog::info("Optimized latest pose: {}", map_->getCameraPose(curr_timestamp_));
             map_->addBackground(createBackground(frame, map_->getCameraPose(curr_timestamp_)));
+            mapper_status = MapperStatus::OPTIMIZED;
         }
         spdlog::info("Returning from mapper");
         return std::make_unique<RendererInput>(curr_timestamp_, mapper_status, object_renders, frame);

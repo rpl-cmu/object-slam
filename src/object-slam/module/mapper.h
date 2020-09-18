@@ -76,7 +76,7 @@ namespace oslam
                                                   const Eigen::Matrix4d& camera_pose);
 
         static InstanceImages::const_iterator associateObjects(const ObjectId& id,
-                                                               const cv::Mat& object_raycast,
+                                                               const cv::Mat& object_render_color,
                                                                const InstanceImages& instance_images,
                                                                std::vector<bool>& instance_matches);
 
