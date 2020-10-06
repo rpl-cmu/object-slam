@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <opencv2/core.hpp>
+#include <opencv2/imgproc.hpp>
 #include <opencv2/rgbd/depth.hpp>
 #include <utility>
 
@@ -108,6 +109,7 @@ namespace oslam
         const InstanceImages& instance_images       = mapper_payload.instance_images_;
         const Eigen::Matrix4d& relative_camera_pose = mapper_payload.relative_camera_pose_;
         MapperStatus mapper_status                  = MapperStatus::INVALID;
+        InstanceImage bg_instance = InstanceImage(frame.width_, frame.height_);
 
         Renders object_renders;
         bool needs_optimization = false;
@@ -119,7 +121,7 @@ namespace oslam
                 if (curr_timestamp_ == 1)
                 {
                     initializeMapAndGraph(frame, instance_images, relative_camera_pose);
-
+                    bg_instance = createBgInstanceImage(frame, instance_images);
                     object_renders = map_->renderObjects(frame, relative_camera_pose);
                     mapper_status  = MapperStatus::VALID;
                     break;
@@ -144,6 +146,7 @@ namespace oslam
                         needs_optimization = true;
                     }
 
+
                     //! Integrate background
                     map_->integrateBackground(frame, InstanceImage(frame.width_, frame.height_), camera_pose);
                     spdlog::info("Integrated background");
@@ -152,6 +155,7 @@ namespace oslam
                     InstanceImages frame_instance_images;
                     projectInstanceImages(keyframe_timestamp, frame, instance_images, frame_instance_images);
                     spdlog::info("Projected instance images");
+                    bg_instance = createBgInstanceImage(frame, frame_instance_images);
 
                     //! Associate and integrate objects in the map
                     object_renders = map_->renderObjects(frame, camera_pose);
@@ -178,13 +182,25 @@ namespace oslam
         }
 
         auto deleted_object_keys = map_->deleteBadObjects();
-        spdlog::info("Removed all objects");
         //! TODO: Delete factors and values associated with the key
+        //! Stores iterators to the factors associated with keys to be deleted
+        /* std::set<size_t> removed_factor_slots; */
+        /* const gtsam::VariableIndex variable_index(pose_graph_); */
         /* for (const auto& object_key : deleted_object_keys) */
         /* { */
         /*     if(pose_values_.exists(object_key)) */
         /*     { */
+        /*         const auto& slots = variable_index[object_key]; */
+        /*         removed_factor_slots.insert(slots.begin(), slots.end()); */
         /*         pose_values_.erase(object_key); */
+        /*     } */
+        /* } */
+        /* //! TODO: Replace the removed factors with marginalized factor?? */
+        /* for(size_t slot: removed_factor_slots) */
+        /* { */
+        /*     if(pose_graph_.at(slot)) */
+        /*     { */
+        /*         pose_graph_.remove(slot); */
         /*     } */
         /* } */
 
@@ -194,18 +210,10 @@ namespace oslam
             spdlog::info("Added new background object into the map");
         }
 
+        spdlog::info("Total number of objects in the map: {}", map_->getNumObjects());
         if (needs_optimization)
         {
-            spdlog::info("needs optimization");
-#ifdef OSLAM_DEBUG_VIS
-            pose_graph_.print("Factor Graph:\n");
-            pose_values_.print("Values to optimize: \n");
-            spdlog::info("Number of values in the graph: {}", pose_values_.size());
-            spdlog::info("Number of objects in the map: {}", map_->getNumObjects());
-            spdlog::info("Number of keyframes: {}", keyframe_timestamps_.size());
-#endif
             gtsam::LevenbergMarquardtOptimizer optimizer = gtsam::LevenbergMarquardtOptimizer(pose_graph_, pose_values_);
-            spdlog::info("Created optimizer");
             gtsam::Values new_values = optimizer.optimize();
             spdlog::info("Graph error before optimize: {}", pose_graph_.error(pose_values_));
             spdlog::info("Graph error after optimize: {}", pose_graph_.error(new_values));
@@ -213,12 +221,10 @@ namespace oslam
             pose_values_ = new_values;
 
             //! Create new background here with updated keyframe_timestamp_ pose
-            spdlog::info("Optimized latest pose: {}", map_->getCameraPose(curr_timestamp_));
             map_->addBackground(createBackground(frame, map_->getCameraPose(curr_timestamp_)));
             mapper_status = MapperStatus::OPTIMIZED;
         }
-        spdlog::info("Returning from mapper");
-        return std::make_unique<RendererInput>(curr_timestamp_, mapper_status, object_renders, frame);
+        return std::make_unique<RendererInput>(curr_timestamp_, mapper_status, bg_instance, object_renders, frame);
     }
 
     void Mapper::initializeMapAndGraph(const Frame& frame,
@@ -295,10 +301,29 @@ namespace oslam
                 cuda::SegmentationCuda::TransformAndProject(src_mask, depth, T_keyframe_to_camera_cuda, intrinsic_cuda);
             cv::Mat proj_mask = proj_mask_cuda.DownloadMat();
 
+            /* cv::Mat mask_flood = proj_mask.clone(); */
+            /* cv::floodFill(mask_flood, cv::Point(0, 0), cv::Scalar(255)); */
+            /* proj_mask = (proj_mask | ~mask_flood); */
+
             BoundingBox proj_bbox;
             transform_project_bbox(instance_image.bbox_, proj_bbox, depthf, frame.intrinsic_, T_keyframe_to_camera);
             projected_instance_images.emplace_back(proj_mask, proj_bbox, instance_image.label_, instance_image.score_);
         }
+    }
+
+    InstanceImage Mapper::createBgInstanceImage(const Frame& frame, const InstanceImages& instance_images) const
+    {
+        cv::Mat bg_mask = cv::Mat::zeros(frame.height_, frame.width_, CV_8UC1);
+        for(const auto& instance_image : instance_images)
+        {
+            cv::bitwise_or(bg_mask, instance_image.maskb_, bg_mask);
+        }
+        cv::Mat im_floodfill = bg_mask.clone();
+        cv::floodFill(im_floodfill, cv::Point(0, 0), cv::Scalar(255));
+
+        cv::Mat im_floodfill_inv = ~im_floodfill;
+        bg_mask = ~(bg_mask | im_floodfill_inv);
+        return InstanceImage(bg_mask, BoundingBox({0, 0, frame.width_, frame.height_}), 0, 1);
     }
 
     std::vector<bool> Mapper::integrateObjects(const Renders& object_renders,
@@ -524,4 +549,4 @@ namespace oslam
     {
         pose_values_.insert(object_key, gtsam::Pose3(object_pose));
     }
-}  // namespace oslam
+

@@ -10,6 +10,8 @@
 #include <Open3D/Open3D.h>
 
 #include <boost/filesystem.hpp>
+#include <boost/filesystem/operations.hpp>
+#include <fstream>
 #include <vector>
 #include <xtensor/xadapt.hpp>
 #include <xtensor/xarray.hpp>
@@ -30,6 +32,7 @@ namespace oslam
         const RendererInput& renderer_payload   = *input;
         const Frame& frame                      = renderer_payload.frame_;
         const Eigen::Matrix3d& intrinsic_matrix = frame.intrinsic_.intrinsic_matrix_;
+        const InstanceImage& bg_instance = renderer_payload.bg_instance_;
         Renders all_renders                     = renderer_payload.object_renders_;
 
         spdlog::info("Filling camera trajectory");
@@ -43,10 +46,15 @@ namespace oslam
 
             Render background_render = map_->renderBackground(frame, map_->getCameraPose(curr_timestamp_));
 
-            cv::imshow("Background render", background_render.color_map_);
-            spdlog::info("Rendered background");
+            cv::Mat color_map, vertex_map, normal_map;
+            background_render.color_map_.copyTo(color_map, bg_instance.maskb_);
+            background_render.vertex_map_.copyTo(vertex_map, bg_instance.maskb_);
+            background_render.normal_map_.copyTo(normal_map, bg_instance.maskb_);
 
-            all_renders.emplace_back(map_->getBackgroundId(), background_render);
+            cv::imshow("Background mask", bg_instance.maskb_);
+            cv::imshow("Background render", color_map);
+
+            all_renders.emplace_back(map_->getBackgroundId(), Render(color_map, vertex_map, normal_map));
 
             std::vector<cv::Mat> depth_array;
             std::vector<cv::Mat> color_array;
@@ -82,6 +90,7 @@ namespace oslam
 
             //! Use a constant greater than max depth threshold
             depth_xarray = xt::where(xt::isfinite(depth_xarray), depth_xarray, 101);
+            depth_xarray = xt::where(depth_xarray <= 0, 101, depth_xarray);
 
             xt::xarray<int> min_idx = xt::argmin(depth_xarray, depth_xarray.dimension() - 1);
 
@@ -104,8 +113,6 @@ namespace oslam
                     layered_normal.at<cv::Vec3f>(row, col) = normal_array.at(layer).at<cv::Vec3f>(row, col);
                 }
             }
-            /* cv::imshow("Layered render color", layered_color); */
-            /* spdlog::info("Created layered render"); */
             Render::UniquePtr layered_render = std::make_unique<Render>(layered_color, layered_vertex, layered_normal);
 
             RendererOutput::UniquePtr render_output =
@@ -119,11 +126,11 @@ namespace oslam
             /* auto object_bboxes = map_->getAllObjectBoundingBoxes(); */
             /* renderObjectCubes(object_bboxes, render_output->widgets_map_); */
 
-            if(renderer_payload.mapper_status_ == MapperStatus::OPTIMIZED)
-            {
-                auto object_meshes = map_->meshAllObjects();
-                renderObjectMeshes(object_meshes, render_output->widgets_map_);
-            }
+            /* if(renderer_payload.mapper_status_ == MapperStatus::OPTIMIZED) */
+            /* { */
+            /*     auto object_meshes = map_->meshAllObjects(); */
+            /*     renderObjectMeshes(object_meshes, render_output->widgets_map_); */
+            /* } */
 
             auto raycast_finish_time = Timer::toc(raycast_start_time).count();
 
@@ -138,17 +145,22 @@ namespace oslam
 
     std::vector<cv::Affine3d> Renderer::fillCameraTrajectory(const PoseTrajectory& camera_trajectory)
     {
+        using namespace boost::filesystem;
         std::vector<cv::Affine3d> camera_trajectory_3d;
         camera_trajectory_3d.reserve(camera_trajectory.size());
+        path camera_trajectory_file{current_path() / "camera_trajectory.txt"};
+        ofstream trajectory_stream{camera_trajectory_file};
         for (const auto& camera_pose : camera_trajectory)
         {
             cv::Matx44d cv_camera;
             cv::eigen2cv(camera_pose, cv_camera);
             cv::Affine3d cv_camera_pose(cv_camera);
+            trajectory_stream << camera_pose << "\n";
             camera_trajectory_3d.push_back(cv_camera_pose);
         }
         return camera_trajectory_3d;
     }
+
     WidgetPtr Renderer::render3dTrajectory(const std::vector<cv::Affine3d>& camera_trajectory_3d)
     {
         //! TODO: Limit trajectory length

@@ -263,20 +263,20 @@ namespace oslam
             const ObjectId& id      = object_pair.first;
             TSDFObject::Ptr& object = object_pair.second;
 
-            if (values.exists(object->hash(id)))
-            {
+            /* if (values.exists(object->hash(id))) */
+            /* { */
                 gtsam::Pose3 updatedPose = values.at<gtsam::Pose3>(object->hash(id));
                 object->setPose(updatedPose.matrix());
-            }
+            /* } */
         }
         for (const auto& keyframe_timestamp : keyframe_timestamps)
         {
             auto camera_key = gtsam::Symbol('c', keyframe_timestamp);
-            if (values.exists(camera_key))
-            {
+            /* if (values.exists(camera_key)) */
+            /* { */
                 gtsam::Pose3 updatedPose                      = values.at<gtsam::Pose3>(camera_key);
                 camera_trajectory_.at(keyframe_timestamp - 1) = updatedPose.matrix();
-            }
+            /* } */
         }
     }
 

@@ -56,7 +56,7 @@ namespace oslam
         constexpr static double SCORE_THRESHOLD      = 0.5;
         constexpr static float IOU_OVERLAP_THRESHOLD = 0.2F;
         constexpr static int MASK_AREA_THRESHOLD     = 2500;
-        constexpr static int BACKGROUND_RESOLUTION   = 256;
+        constexpr static int BACKGROUND_RESOLUTION   = 512;
         constexpr static int OBJECT_RESOLUTION       = 128;
 
         virtual InputUniquePtr getInputPacket() override;
@@ -69,6 +69,9 @@ namespace oslam
                                    const Frame& frame,
                                    const InstanceImages& instance_images,
                                    InstanceImages& projected_instance_images);
+
+        InstanceImage createBgInstanceImage(const Frame& frame, const InstanceImages& instance_images) const;
+
         bool shouldCreateNewBackground(Timestamp timestamp);
         static TSDFObject::UniquePtr createBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose);
         static TSDFObject::UniquePtr createObject(const Frame& frame,

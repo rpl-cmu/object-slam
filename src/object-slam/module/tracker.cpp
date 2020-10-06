@@ -128,6 +128,7 @@ namespace oslam
 
             auto success         = std::get<0>(result);
             relative_camera_pose = std::get<1>(result);
+            spdlog::info("Success: {}, Returned relative camera pose: \n{}\n", success, relative_camera_pose);
 
             if (success)
             {

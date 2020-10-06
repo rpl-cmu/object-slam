@@ -12,6 +12,7 @@
 
 #include <opencv2/core/types.hpp>
 
+#include "object-slam/struct/instance_image.h"
 #include "object-slam/utils/pipeline_payload.h"
 #include "object-slam/utils/types.h"
 
@@ -36,15 +37,17 @@ namespace oslam
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
         RendererInput(Timestamp timestamp,
                       const MapperStatus& mapper_status,
+                      const InstanceImage& bg_instance,
                       const Renders& object_renders,
                       const Frame& frame)
-            : PipelinePayload(timestamp), mapper_status_(mapper_status), object_renders_(object_renders), frame_(frame)
+            : PipelinePayload(timestamp), mapper_status_(mapper_status), bg_instance_(bg_instance), object_renders_(object_renders), frame_(frame)
         {
         }
 
         ~RendererInput() = default;
 
         const MapperStatus mapper_status_;
+        const InstanceImage bg_instance_;
         const Renders object_renders_;
         const Frame frame_;
     };
