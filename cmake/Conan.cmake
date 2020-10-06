@@ -18,17 +18,22 @@ macro(run_conan)
     https://api.bintray.com/conan/bincrafters/public-conan
   )
 
+  conan_add_remote(
+    NAME omaralvarez URL
+    https://api.bintray.com/conan/omaralvarez/public-conan
+  )
+
   conan_cmake_run(
     REQUIRES
     ${CONAN_EXTRA_REQUIRES}
     catch2/2.11.0
     CLI11/1.9.1@cliutils/stable
-    fmt/6.2.0
-    spdlog/1.6.1
+    fmt/7.0.3
+    spdlog/1.8.0
     cppzmq/4.6.0
     protoc_installer/3.9.1@bincrafters/stable
     protobuf/3.9.1@bincrafters/stable
-    xtensor/0.20.8@omaralvarez/public-conan
+    xtensor/0.20.10@omaralvarez/public-conan
     OPTIONS
     ${CONAN_EXTRA_OPTIONS}
     BASIC_SETUP
