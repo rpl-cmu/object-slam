@@ -20,7 +20,7 @@ int main(int argc, char* argv[])
     app.add_option("dataset_path", dataset_path, "Path to the dataset")->required();
 
     app.add_flag(
-        "-d, --debug", [](size_t /*unused*/) { spdlog::set_level(spdlog::level::debug); }, "Print debug logs");
+        "-d, --debug", [](size_t /*unused*/) { spdlog::set_level(spdlog::level::trace); }, "Print debug logs");
 
     spdlog::set_error_handler([](const std::string& msg) -> void { std::cerr << "Error in SPDLOG: " << msg << std::endl; raise(SIGABRT);});
     CLI11_PARSE(app, argc, argv);

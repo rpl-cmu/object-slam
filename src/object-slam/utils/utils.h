@@ -30,16 +30,14 @@ namespace oslam
 
     inline Eigen::Vector3d inverse_project_point(const Eigen::Vector2i& r_point2,
                                                  const open3d::camera::PinholeCameraIntrinsic& r_intrinsic,
-                                                 float depth)
+                                                 double depth)
     {
         auto fx = r_intrinsic.intrinsic_matrix_(0, 0);
         auto fy = r_intrinsic.intrinsic_matrix_(1, 1);
         auto cx = r_intrinsic.intrinsic_matrix_(0, 2);
         auto cy = r_intrinsic.intrinsic_matrix_(1, 2);
 
-        return Eigen::Vector3d((static_cast<double>(depth) * (r_point2(0) - cx)) / fx,
-                               (static_cast<double>(depth) * (r_point2(1) - cy)) / fy,
-                               static_cast<double>(depth));
+        return Eigen::Vector3d((depth * (r_point2(0) - cx)) / fx, (depth * (r_point2(1) - cy)) / fy, depth);
     }
 
     inline bool is_valid_depth(float depth)
@@ -68,9 +66,9 @@ namespace oslam
             return false;
         }
         Eigen::Vector3d left_top_3dpoint =
-            inverse_project_point(left_top_point, r_intrinsic, r_depth.at<float>(bbox[1], bbox[0]));
+            inverse_project_point(left_top_point, r_intrinsic, static_cast<double>(r_depth.at<float>(bbox[1], bbox[0])));
         Eigen::Vector3d right_bottom_3dpoint =
-            inverse_project_point(right_bottom_point, r_intrinsic, r_depth.at<float>(bbox[3], bbox[2]));
+            inverse_project_point(right_bottom_point, r_intrinsic, static_cast<double>(r_depth.at<float>(bbox[3], bbox[2])));
 
         Eigen::Vector4d left_top_4dpoint;
         Eigen::Vector4d right_bottom_4dpoint;

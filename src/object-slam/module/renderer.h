@@ -47,6 +47,7 @@ namespace oslam
         WidgetPtr render3dFrustumWithColorMap(const std::vector<cv::Affine3d>& camera_trajectory_3d,
                                               const Eigen::Matrix3d& intrinsic_matrix,
                                               const cv::Mat& color_map);
+        void renderFrustumPlanes(const PointPlanes& point_planes, std::map<std::string, WidgetPtr>& widget_map);
 
         void renderObjectCubes(const ObjectBoundingBoxes& object_bboxes, std::map<std::string, WidgetPtr>& widget_map);
         void renderObjectMeshes(const IdToObjectMesh& object_meshes, std::map<std::string, WidgetPtr>& widget_map);

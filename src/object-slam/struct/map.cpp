@@ -99,21 +99,32 @@ namespace oslam
             const ObjectId& id      = object_pair.first;
             TSDFObject::Ptr& object = object_pair.second;
 
-            cuda::ImageCuda<float, 3> vertex;
-            cuda::ImageCuda<float, 3> normal;
-            cuda::ImageCuda<uchar, 3> color;
+            if (isObjectInFrustum(object, camera_pose))
+            {
+                //! TODO: Render the objects
+                spdlog::info("Current object ID: {} is in frustum", id);
+            }
+            else
+            {
+                //! Download the object onto CPU memory
+                spdlog::info("Current object ID: {} is not in frustum", id);
+            }
+                cuda::ImageCuda<float, 3> vertex;
+                cuda::ImageCuda<float, 3> normal;
+                cuda::ImageCuda<uchar, 3> color;
 
-            vertex.Create(frame.width_, frame.height_);
-            normal.Create(frame.width_, frame.height_);
-            color.Create(frame.width_, frame.height_);
+                vertex.Create(frame.width_, frame.height_);
+                normal.Create(frame.width_, frame.height_);
+                color.Create(frame.width_, frame.height_);
 
-            object->raycast(vertex, normal, color, camera_pose);
+                object->raycast(vertex, normal, color, camera_pose);
 
-            cv::Mat color_map  = color.DownloadMat();
-            cv::Mat vertex_map = vertex.DownloadMat();
-            cv::Mat normal_map = normal.DownloadMat();
+                cv::Mat color_map  = color.DownloadMat();
+                cv::Mat vertex_map = vertex.DownloadMat();
+                cv::Mat normal_map = normal.DownloadMat();
 
-            object_renders.emplace_back(id, Render(color_map, vertex_map, normal_map));
+                object_renders.emplace_back(id, Render(color_map, vertex_map, normal_map));
+
         }
         return object_renders;
     }
@@ -134,8 +145,8 @@ namespace oslam
     void Map::getObjectBoundingBox(const ObjectId& id, Eigen::Vector3d& min_pt, Eigen::Vector3d& max_pt) const
     {
         const TSDFObject::Ptr& object = id_to_object_.at(id);
-        min_pt                        = object->object_min_pt_;
-        max_pt                        = object->object_max_pt_;
+        min_pt                        = object->getMinBound();
+        max_pt                        = object->getMaxBound();
     }
 
     ObjectBoundingBoxes Map::getAllObjectBoundingBoxes() const
@@ -163,7 +174,7 @@ namespace oslam
             const ObjectId& id     = object_pair.first;
             TSDFObject::Ptr object = object_pair.second;
             ScalableMeshVolumeCuda object_mesher(
-                VertexType::VertexWithColor, 16, object->volume_.active_subvolume_entry_array_.size(), 500000, 1000000);
+                VertexType::VertexWithColor, 16, object->volume_.active_subvolume_entry_array_.size(), 50000, 100000);
 
             object_mesher.MarchingCubes(object->volume_);
             auto mesh = object_mesher.mesh().Download();
@@ -247,6 +258,131 @@ namespace oslam
 
         return camera_trajectory_.at(camera_timestamp - 1);
     }
+    bool Map::isObjectInFrustum(const TSDFObject::Ptr& object, const Eigen::Matrix4d& camera_pose)
+    {
+        auto point_planes = getCameraFrustumPlanes(camera_pose);
+
+        Eigen::Vector3d min_point, max_point;
+        min_point = object->getMinBound();
+        max_point = object->getMaxBound();
+
+        bool result = true;
+        int out = 0;
+        int in = 0;
+        auto get_vertex = [&min_point, &max_point](int index) -> Eigen::Vector3d {
+            Eigen::Vector3d vertex = min_point;
+
+            double x = max_point(0) - min_point(0);
+            double y = max_point(1) - min_point(1);
+            double z = max_point(2) - min_point(2);
+
+            if(index >= 8)
+                spdlog::error("Only 8 vertices");
+
+            std::vector<Eigen::Vector3d> box_vertices;
+            box_vertices.emplace_back(min_point + Eigen::Vector3d(0, 0, 0));
+            box_vertices.emplace_back(min_point + Eigen::Vector3d(0, 0, z));
+            box_vertices.emplace_back(min_point + Eigen::Vector3d(0, y, 0));
+            box_vertices.emplace_back(min_point + Eigen::Vector3d(0, y, z));
+            box_vertices.emplace_back(min_point + Eigen::Vector3d(x, 0, 0));
+            box_vertices.emplace_back(min_point + Eigen::Vector3d(x, 0, z));
+            box_vertices.emplace_back(min_point + Eigen::Vector3d(x, y, 0));
+            box_vertices.emplace_back(min_point + Eigen::Vector3d(x, y, z));
+
+            return box_vertices.at(index);
+        };
+
+        for (const auto& point_plane : point_planes)
+        {
+            const Plane3d& plane                = point_plane.first;
+            const Eigen::Vector3d& plane_center = point_plane.second;
+            out = 0; in = 0;
+            for(int k = 0; k < 8 && (in ==0 || out == 0); k++)
+            {
+                if(plane.signedDistance(get_vertex(k)) < 0)
+                    out++;
+                else
+                    in++;
+            }
+        }
+        if(in == 0)
+            result = false;
+        return result;
+    }
+
+    PointPlanes Map::getCameraFrustumPlanes(const Eigen::Matrix4d& camera_pose) const
+    {
+        //! Z axis is the look ahead vector for the camera
+        const Eigen::Vector3d& camera_x        = camera_pose.block<3, 1>(0, 0);
+        const Eigen::Vector3d& camera_y        = camera_pose.block<3, 1>(0, 1);
+        const Eigen::Vector3d& camera_z        = camera_pose.block<3, 1>(0, 2);
+        const Eigen::Vector3d& camera_position = camera_pose.block<3, 1>(0, 3);
+        /* spdlog::info("Camera position: \n{}", camera_position); */
+        /* spdlog::info("Camera look ahead vector \n{}", camera_z); */
+
+        auto intrinsic = background_volume_->intrinsic_;
+        Eigen::Vector2i top_center((intrinsic.width_ + 2) / 2, -2), bottom_center((intrinsic.width_ + 2) / 2, intrinsic.height_ + 2);
+        Eigen::Vector2i left_center(-2, (intrinsic.height_ + 2) / 2), right_center((intrinsic.width_ + 2), (intrinsic.height_ + 2)/ 2);
+
+        Eigen::Vector3d near_plane_center = camera_position + camera_z * MIN_DEPTH;
+        Eigen::Vector3d far_plane_center  = camera_position + camera_z * MAX_DEPTH;
+
+        Eigen::Vector3d near_top_center    = inverse_project_point(top_center, intrinsic, MIN_DEPTH);
+        Eigen::Vector3d near_bottom_center = inverse_project_point(bottom_center, intrinsic, MIN_DEPTH);
+        Eigen::Vector3d near_left_center   = inverse_project_point(left_center, intrinsic, MIN_DEPTH);
+        Eigen::Vector3d near_right_center  = inverse_project_point(right_center, intrinsic, MIN_DEPTH);
+
+        near_top_center    = Eigen::Affine3d(camera_pose) * near_top_center;
+        near_bottom_center = Eigen::Affine3d(camera_pose) * near_bottom_center;
+        near_left_center   = Eigen::Affine3d(camera_pose) * near_left_center;
+        near_right_center  = Eigen::Affine3d(camera_pose) * near_right_center;
+
+        PointPlanes point_planes;
+        //! Near plane
+        Plane3d near_plane = Plane3d(camera_z, near_plane_center);
+        near_plane.normalize();
+        point_planes.emplace_back(near_plane, near_plane_center);
+
+        //! Far plane
+        Plane3d far_plane = Plane3d(-camera_z, far_plane_center);
+        far_plane.normalize();
+        point_planes.emplace_back(far_plane, far_plane_center);
+
+        //! Top plane
+        Eigen::Vector3d auxiliary, normal;
+        auxiliary = near_top_center - camera_position;
+        auxiliary.normalize();
+        normal = auxiliary.cross(camera_x);
+        Plane3d near_top_plane = Plane3d(normal, near_top_center);
+        near_top_plane.normalize();
+        point_planes.emplace_back(near_top_plane, near_top_center);
+
+        //! Bottom plane
+        auxiliary = near_bottom_center - camera_position;
+        auxiliary.normalize();
+        normal = camera_x.cross(auxiliary);
+        Plane3d near_bottom_plane = Plane3d(normal, near_bottom_center);
+        near_bottom_plane.normalize();
+        point_planes.emplace_back(near_bottom_plane, near_bottom_center);
+
+        //! Left plane
+        auxiliary = near_left_center - camera_position;
+        auxiliary.normalize();
+        normal = camera_y.cross(auxiliary);
+        Plane3d near_left_plane = Plane3d(normal, near_left_center);
+        near_left_plane.normalize();
+        point_planes.emplace_back(near_left_plane, near_left_center);
+
+        //! Right plane
+        auxiliary = near_right_center - camera_position;
+        auxiliary.normalize();
+        normal = auxiliary.cross(camera_y);
+        Plane3d near_right_plane = Plane3d(normal, near_right_center);
+        near_right_plane.normalize();
+        point_planes.emplace_back(near_right_plane, near_right_center);
+
+        return point_planes;
+    }
 
     PoseTrajectory Map::getCameraTrajectory() const
     {
@@ -265,8 +401,8 @@ namespace oslam
 
             /* if (values.exists(object->hash(id))) */
             /* { */
-                gtsam::Pose3 updatedPose = values.at<gtsam::Pose3>(object->hash(id));
-                object->setPose(updatedPose.matrix());
+            gtsam::Pose3 updatedPose = values.at<gtsam::Pose3>(object->hash(id));
+            object->setPose(updatedPose.matrix());
             /* } */
         }
         for (const auto& keyframe_timestamp : keyframe_timestamps)
@@ -274,8 +410,8 @@ namespace oslam
             auto camera_key = gtsam::Symbol('c', keyframe_timestamp);
             /* if (values.exists(camera_key)) */
             /* { */
-                gtsam::Pose3 updatedPose                      = values.at<gtsam::Pose3>(camera_key);
-                camera_trajectory_.at(keyframe_timestamp - 1) = updatedPose.matrix();
+            gtsam::Pose3 updatedPose                      = values.at<gtsam::Pose3>(camera_key);
+            camera_trajectory_.at(keyframe_timestamp - 1) = updatedPose.matrix();
             /* } */
         }
     }

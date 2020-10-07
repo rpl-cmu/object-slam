@@ -6,6 +6,7 @@
  * Description:      Implementation file for renderer
  *****************************************************************************/
 #include "renderer.h"
+#include <Eigen/src/Geometry/Hyperplane.h>
 #include <Open3D/IO/ClassIO/TriangleMeshIO.h>
 #include <Open3D/Open3D.h>
 
@@ -31,15 +32,16 @@ namespace oslam
         curr_timestamp_                         = input->timestamp_;
         const RendererInput& renderer_payload   = *input;
         const Frame& frame                      = renderer_payload.frame_;
-        const Eigen::Matrix3d& intrinsic_matrix = frame.intrinsic_.intrinsic_matrix_;
-        const InstanceImage& bg_instance = renderer_payload.bg_instance_;
+        const Eigen::Matrix3d& intrinsic_matrix = frame.intrinsic_.intrinsic_matrix_ * 4.0;
+        const InstanceImage& bg_instance        = renderer_payload.bg_instance_;
         Renders all_renders                     = renderer_payload.object_renders_;
 
         spdlog::info("Filling camera trajectory");
         std::vector<cv::Affine3d> camera_trajectory_3d = fillCameraTrajectory(map_->getCameraTrajectory());
         spdlog::info("Filled camera_trajectory");
 
-        if (renderer_payload.mapper_status_ == MapperStatus::VALID || renderer_payload.mapper_status_ == MapperStatus::OPTIMIZED)
+        if (renderer_payload.mapper_status_ == MapperStatus::VALID ||
+            renderer_payload.mapper_status_ == MapperStatus::OPTIMIZED)
         {
             auto raycast_start_time = Timer::tic();
             spdlog::info("Mapping status is valid");
@@ -102,7 +104,6 @@ namespace oslam
             cv::Mat layered_vertex = cv::Mat::zeros(frame.color_.rows, frame.color_.cols, CV_32FC3);
             cv::Mat layered_normal = cv::Mat::zeros(frame.color_.rows, frame.color_.cols, CV_32FC3);
 
-
             for (int row = 0; row < frame.color_.rows; ++row)
             {
                 for (int col = 0; col < frame.color_.cols; ++col)
@@ -119,18 +120,19 @@ namespace oslam
                 std::make_unique<RendererOutput>(curr_timestamp_ + 1, std::move(layered_render));
 
             //! TODO: Mesh output should be part of RendererOutput
-            WidgetPtr traj_widget = render3dTrajectory(camera_trajectory_3d);
-            WidgetPtr frustum_widget =
-                render3dFrustumWithColorMap(camera_trajectory_3d, intrinsic_matrix, layered_color);
+            WidgetPtr traj_widget    = render3dTrajectory(camera_trajectory_3d);
+            WidgetPtr frustum_widget = render3dFrustumWithColorMap(camera_trajectory_3d, intrinsic_matrix, layered_color);
 
-            /* auto object_bboxes = map_->getAllObjectBoundingBoxes(); */
-            /* renderObjectCubes(object_bboxes, render_output->widgets_map_); */
+            auto object_bboxes = map_->getAllObjectBoundingBoxes();
+            renderObjectCubes(object_bboxes, render_output->widgets_map_);
 
             /* if(renderer_payload.mapper_status_ == MapperStatus::OPTIMIZED) */
             /* { */
             /*     auto object_meshes = map_->meshAllObjects(); */
             /*     renderObjectMeshes(object_meshes, render_output->widgets_map_); */
             /* } */
+            auto point_planes = map_->getCameraFrustumPlanes(map_->getCameraPose(curr_timestamp_));
+            renderFrustumPlanes(point_planes, render_output->widgets_map_);
 
             auto raycast_finish_time = Timer::toc(raycast_start_time).count();
 
@@ -148,8 +150,8 @@ namespace oslam
         using namespace boost::filesystem;
         std::vector<cv::Affine3d> camera_trajectory_3d;
         camera_trajectory_3d.reserve(camera_trajectory.size());
-        path camera_trajectory_file{current_path() / "camera_trajectory.txt"};
-        ofstream trajectory_stream{camera_trajectory_file};
+        path camera_trajectory_file{ current_path() / "camera_trajectory.txt" };
+        ofstream trajectory_stream{ camera_trajectory_file };
         for (const auto& camera_pose : camera_trajectory)
         {
             cv::Matx44d cv_camera;
@@ -200,7 +202,7 @@ namespace oslam
 
     void Renderer::renderObjectCubes(const ObjectBoundingBoxes& object_bboxes, std::map<std::string, WidgetPtr>& widget_map)
     {
-        for(const auto& point_pair : object_bboxes)
+        for (const auto& point_pair : object_bboxes)
         {
             cv::Vec3d min_pt, max_pt;
             cv::eigen2cv(point_pair.second.first, min_pt);
@@ -212,18 +214,51 @@ namespace oslam
 
     void Renderer::renderObjectMeshes(const IdToObjectMesh& object_meshes, std::map<std::string, WidgetPtr>& widget_map)
     {
-        for(const auto& mesh_pair : object_meshes)
+        for (const auto& mesh_pair : object_meshes)
         {
             cv::Mat colors, vertices, polygons;
-            const auto& mesh = mesh_pair.second;
+            const auto& mesh             = mesh_pair.second;
             std::string object_id_string = fmt::format("{}temp.ply", mesh_pair.first);
             io::WriteTriangleMesh(object_id_string, *mesh);
 
-            auto cv_mesh = cv::viz::Mesh::load(object_id_string);
+            auto cv_mesh        = cv::viz::Mesh::load(object_id_string);
             auto cv_mesh_widget = std::make_unique<cv::viz::WMesh>(cv_mesh);
             boost::filesystem::remove(object_id_string);
 
             widget_map.emplace(object_id_string, std::move(cv_mesh_widget));
+        }
+    }
+
+    void Renderer::renderFrustumPlanes(const PointPlanes& point_planes, std::map<std::string, WidgetPtr>& widget_map)
+    {
+        {
+            int i = 0;
+            for (const auto& point_plane : point_planes)
+            {
+                const Plane3d& plane                = point_plane.first;
+                const Eigen::Vector3d plane_normal  = plane.normal();
+                const Eigen::Vector3d& plane_center = point_plane.second;
+
+                cv::Vec3d cv_plane_normal, cv_plane_center;
+                cv::eigen2cv(plane_normal, cv_plane_normal);
+                cv::eigen2cv(plane_center, cv_plane_center);
+                std::string plane_string = fmt::format("plane_{}", i);
+                std::string arrow_string = fmt::format("Arrow_{}", i);
+                cv::Vec3d second_point = cv_plane_center + 0.25 * cv_plane_normal;
+                if(i == 5)
+                {
+                widget_map.emplace(
+                    arrow_string,
+                    std::make_unique<cv::viz::WArrow>(cv_plane_center, second_point, 0.02, cv::viz::Color::yellow()));
+                widget_map.emplace(plane_string,
+                                   std::make_unique<cv::viz::WPlane>(cv_plane_center,
+                                                                     cv_plane_normal,
+                                                                     cv::Vec3d(0, 1, 0),
+                                                                     cv::Size2d(0.25, 0.25),
+                                                                     cv::viz::Color::red()));
+                }
+                i++;
+            }
         }
     }
 }  // namespace oslam

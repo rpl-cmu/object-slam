@@ -14,6 +14,7 @@
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/PriorFactor.h>
+#include <spdlog/spdlog.h>
 
 #include <memory>
 #include <opencv2/core.hpp>
@@ -35,6 +36,7 @@ namespace oslam
           tracker_output_queue_(tracker_output_queue),
           transport_output_queue_(transport_output_queue)
     {
+        spdlog::debug("CONSTRUCT: Mapper");
     }
 
     Mapper::InputUniquePtr Mapper::getInputPacket()
@@ -102,6 +104,7 @@ namespace oslam
 
     Mapper::OutputUniquePtr Mapper::runOnce(Mapper::InputUniquePtr input)
     {
+        spdlog::trace("Entered Mapper::runOnce");
         const MapperInput& mapper_payload           = *input;
         curr_timestamp_                             = mapper_payload.timestamp_;
         const Timestamp& keyframe_timestamp         = keyframe_timestamps_.back();
@@ -231,6 +234,7 @@ namespace oslam
                                        const InstanceImages& instance_images,
                                        const Eigen::Matrix4d& camera_pose)
     {
+        spdlog::trace("Entered Mapper::initializeMapAndGraph");
         //! Add to the map
         map_->addCameraPose(camera_pose);
         spdlog::info("Added camera pose");
@@ -549,4 +553,4 @@ namespace oslam
     {
         pose_values_.insert(object_key, gtsam::Pose3(object_pose));
     }
-
+} // namespace oslam

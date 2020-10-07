@@ -8,9 +8,10 @@
 #ifndef OSLAM_MAP_H
 #define OSLAM_MAP_H
 
-#include <gtsam/nonlinear/Values.h>
 #include <map>
 #include <mutex>
+#include <Eigen/Eigen>
+#include <gtsam/nonlinear/Values.h>
 
 #include "object-slam/utils/macros.h"
 #include "object-slam/utils/types.h"
@@ -26,7 +27,10 @@ namespace oslam
      *  and hence forming a posegraph
      */
     using ObjectBoundingBoxes = std::unordered_map<ObjectId, std::pair<Eigen::Vector3d, Eigen::Vector3d>>;
-    using IdToObjectMesh = std::unordered_map<ObjectId, std::shared_ptr<open3d::geometry::TriangleMesh>> ;
+    using IdToObjectMesh      = std::unordered_map<ObjectId, std::shared_ptr<open3d::geometry::TriangleMesh>>;
+    using Plane3d = Eigen::Hyperplane<double, 3>;
+    using PointPlanes = std::vector<std::pair<Eigen::Hyperplane<double, 3>, Eigen::Vector3d>>;
+
     struct Map
     {
        public:
@@ -77,12 +81,17 @@ namespace oslam
 
         void addCameraPose(const Eigen::Matrix4d& camera_pose);
         Eigen::Matrix4d getCameraPose(const Timestamp& camera_timestamp);
+        PointPlanes getCameraFrustumPlanes(const Eigen::Matrix4d& camera_pose) const;
+
+        bool isObjectInFrustum(const TSDFObject::Ptr& object, const Eigen::Matrix4d& camera_pose);
 
         PoseTrajectory getCameraTrajectory() const;
 
         void update(const gtsam::Values& values, const std::vector<Timestamp>& keyframe_timestamps);
 
        private:
+        static constexpr double MIN_DEPTH = 0.01;
+        static constexpr double MAX_DEPTH = 4.0;
         bool removeObject(const ObjectId& id);
         void getObjectBoundingBox(const ObjectId& id, Eigen::Vector3d& min_pt, Eigen::Vector3d& max_pt) const;
 
