@@ -103,12 +103,6 @@ namespace oslam
             {
                 //! TODO: Render the objects
                 spdlog::info("Current object ID: {} is in frustum", id);
-            }
-            else
-            {
-                //! Download the object onto CPU memory
-                spdlog::info("Current object ID: {} is not in frustum", id);
-            }
                 cuda::ImageCuda<float, 3> vertex;
                 cuda::ImageCuda<float, 3> normal;
                 cuda::ImageCuda<uchar, 3> color;
@@ -124,6 +118,12 @@ namespace oslam
                 cv::Mat normal_map = normal.DownloadMat();
 
                 object_renders.emplace_back(id, Render(color_map, vertex_map, normal_map));
+            }
+            else
+            {
+                //! Download the object onto CPU memory
+                spdlog::info("Current object ID: {} is not in frustum", id);
+            }
 
         }
         return object_renders;
@@ -321,8 +321,8 @@ namespace oslam
         /* spdlog::info("Camera look ahead vector \n{}", camera_z); */
 
         auto intrinsic = background_volume_->intrinsic_;
-        Eigen::Vector2i top_center((intrinsic.width_ + 2) / 2, -2), bottom_center((intrinsic.width_ + 2) / 2, intrinsic.height_ + 2);
-        Eigen::Vector2i left_center(-2, (intrinsic.height_ + 2) / 2), right_center((intrinsic.width_ + 2), (intrinsic.height_ + 2)/ 2);
+        Eigen::Vector2i top_center(intrinsic.width_ / 2, 0), bottom_center(intrinsic.width_ / 2, intrinsic.height_);
+        Eigen::Vector2i left_center(0, intrinsic.height_ / 2), right_center(intrinsic.width_, intrinsic.height_ / 2);
 
         Eigen::Vector3d near_plane_center = camera_position + camera_z * MIN_DEPTH;
         Eigen::Vector3d far_plane_center  = camera_position + camera_z * MAX_DEPTH;
@@ -399,20 +399,14 @@ namespace oslam
             const ObjectId& id      = object_pair.first;
             TSDFObject::Ptr& object = object_pair.second;
 
-            /* if (values.exists(object->hash(id))) */
-            /* { */
             gtsam::Pose3 updatedPose = values.at<gtsam::Pose3>(object->hash(id));
             object->setPose(updatedPose.matrix());
-            /* } */
         }
         for (const auto& keyframe_timestamp : keyframe_timestamps)
         {
             auto camera_key = gtsam::Symbol('c', keyframe_timestamp);
-            /* if (values.exists(camera_key)) */
-            /* { */
             gtsam::Pose3 updatedPose                      = values.at<gtsam::Pose3>(camera_key);
             camera_trajectory_.at(keyframe_timestamp - 1) = updatedPose.matrix();
-            /* } */
         }
     }
 

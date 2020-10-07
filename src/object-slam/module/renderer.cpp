@@ -53,7 +53,6 @@ namespace oslam
             background_render.vertex_map_.copyTo(vertex_map, bg_instance.maskb_);
             background_render.normal_map_.copyTo(normal_map, bg_instance.maskb_);
 
-            cv::imshow("Background mask", bg_instance.maskb_);
             cv::imshow("Background render", color_map);
 
             all_renders.emplace_back(map_->getBackgroundId(), Render(color_map, vertex_map, normal_map));
@@ -245,18 +244,15 @@ namespace oslam
                 std::string plane_string = fmt::format("plane_{}", i);
                 std::string arrow_string = fmt::format("Arrow_{}", i);
                 cv::Vec3d second_point = cv_plane_center + 0.25 * cv_plane_normal;
-                if(i == 5)
-                {
                 widget_map.emplace(
                     arrow_string,
                     std::make_unique<cv::viz::WArrow>(cv_plane_center, second_point, 0.02, cv::viz::Color::yellow()));
-                widget_map.emplace(plane_string,
-                                   std::make_unique<cv::viz::WPlane>(cv_plane_center,
-                                                                     cv_plane_normal,
-                                                                     cv::Vec3d(0, 1, 0),
-                                                                     cv::Size2d(0.25, 0.25),
-                                                                     cv::viz::Color::red()));
-                }
+                /* widget_map.emplace(plane_string, */
+                /*                    std::make_unique<cv::viz::WPlane>(cv_plane_center, */
+                /*                                                      cv_plane_normal, */
+                /*                                                      cv::Vec3d(0, 1, 0), */
+                /*                                                      cv::Size2d(0.25, 0.25), */
+                /*                                                      cv::viz::Color::red())); */
                 i++;
             }
         }
