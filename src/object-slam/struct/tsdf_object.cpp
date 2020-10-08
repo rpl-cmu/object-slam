@@ -144,8 +144,6 @@ namespace oslam
         volume_.RayCasting(vertex, normal, color, intrinsic_cuda_, camera_to_object_cuda);
     }
 
-
-
     double TSDFObject::getVisibilityRatio(Timestamp timestamp) const
     {
         int visible_blocks = volume_.GetVisibleSubvolumesCount(static_cast<int>(timestamp), RETROSPECT_VISIBILITY_THRESH);
@@ -160,7 +158,7 @@ namespace oslam
         volume_.Release();
     }
 
-    void TSDFObject::uploadVolumesToGPU()
+    void TSDFObject::uploadVolumeToGPU()
     {
         if (!volume_cpu_.has_value())
         {

@@ -58,7 +58,7 @@ namespace oslam
                      const Eigen::Matrix4d &camera_pose);
 
         void downloadVolumeToCPU();
-        void uploadVolumesToGPU();
+        void uploadVolumeToGPU();
 
         Eigen::Vector3d getMinBound();
         Eigen::Vector3d getMaxBound();
