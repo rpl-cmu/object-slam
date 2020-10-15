@@ -124,8 +124,8 @@ namespace oslam
                 if (curr_timestamp_ == 1)
                 {
                     initializeMapAndGraph(frame, instance_images, relative_camera_pose);
-                    bg_instance = createBgInstanceImage(frame, instance_images);
                     object_renders = map_->renderObjects(frame, relative_camera_pose);
+                    bg_instance = createBgInstanceImage(frame, object_renders, instance_images);
                     mapper_status  = MapperStatus::VALID;
                     break;
                 }
@@ -158,7 +158,6 @@ namespace oslam
                     InstanceImages frame_instance_images;
                     projectInstanceImages(keyframe_timestamp, frame, instance_images, frame_instance_images);
                     spdlog::info("Projected instance images");
-                    bg_instance = createBgInstanceImage(frame, frame_instance_images);
 
                     //! Associate and integrate objects in the map
                     object_renders = map_->renderObjects(frame, camera_pose);
@@ -172,10 +171,13 @@ namespace oslam
                     // Create new objects for unmatched instance images
                     bool num_created =
                         createUnmatchedObjects(frame_instance_matches, frame_instance_images, frame, camera_pose);
+                    bg_instance = createBgInstanceImage(frame, object_renders, frame_instance_images);
                     if (num_created)
                     {
                         needs_optimization = true;
+                        bg_instance = InstanceImage(frame.width_, frame.height_);
                     }
+
 
                     mapper_status = MapperStatus::VALID;
                     break;
@@ -187,30 +189,31 @@ namespace oslam
         auto deleted_object_keys = map_->deleteBadObjects();
         //! TODO: Delete factors and values associated with the key
         //! Stores iterators to the factors associated with keys to be deleted
-        /* std::set<size_t> removed_factor_slots; */
-        /* const gtsam::VariableIndex variable_index(pose_graph_); */
-        /* for (const auto& object_key : deleted_object_keys) */
-        /* { */
-        /*     if(pose_values_.exists(object_key)) */
-        /*     { */
-        /*         const auto& slots = variable_index[object_key]; */
-        /*         removed_factor_slots.insert(slots.begin(), slots.end()); */
-        /*         pose_values_.erase(object_key); */
-        /*     } */
-        /* } */
-        /* //! TODO: Replace the removed factors with marginalized factor?? */
-        /* for(size_t slot: removed_factor_slots) */
-        /* { */
-        /*     if(pose_graph_.at(slot)) */
-        /*     { */
-        /*         pose_graph_.remove(slot); */
-        /*     } */
-        /* } */
+        std::set<size_t> removed_factor_slots;
+        const gtsam::VariableIndex variable_index(pose_graph_);
+        for (const auto& object_key : deleted_object_keys)
+        {
+            if(pose_values_.exists(object_key))
+            {
+                const auto& slots = variable_index[object_key];
+                removed_factor_slots.insert(slots.begin(), slots.end());
+                pose_values_.erase(object_key);
+            }
+        }
+        //! TODO: Replace the removed factors with marginalized factor??
+        for(size_t slot: removed_factor_slots)
+        {
+            if(pose_graph_.at(slot))
+            {
+                pose_graph_.remove(slot);
+            }
+        }
 
         if (shouldCreateNewBackground(curr_timestamp_))
         {
             map_->addBackground(createBackground(frame, map_->getCameraPose(curr_timestamp_)));
             spdlog::info("Added new background object into the map");
+            needs_optimization = true;
         }
 
         spdlog::info("Total number of objects in the map: {}", map_->getNumObjects());
@@ -311,13 +314,22 @@ namespace oslam
 
             BoundingBox proj_bbox;
             transform_project_bbox(instance_image.bbox_, proj_bbox, depthf, frame.intrinsic_, T_keyframe_to_camera);
-            projected_instance_images.emplace_back(proj_mask, proj_bbox, instance_image.label_, instance_image.score_);
+            projected_instance_images.emplace_back(proj_mask, proj_bbox, instance_image.label_, instance_image.score_, instance_image.feature_);
         }
     }
 
-    InstanceImage Mapper::createBgInstanceImage(const Frame& frame, const InstanceImages& instance_images) const
+    InstanceImage Mapper::createBgInstanceImage(const Frame& frame, const Renders& object_renders, const InstanceImages& instance_images) const
     {
         cv::Mat bg_mask = cv::Mat::zeros(frame.height_, frame.width_, CV_8UC1);
+        /* for(const auto& render_pair : object_renders) */
+        /* { */
+        /*     const Render& object_render = render_pair.second; */
+        /*     cv::Mat gray; */
+        /*     cv::cvtColor(object_render.color_map_, gray, cv::COLOR_BGR2GRAY); */
+        /*     cv::Mat mask; */
+        /*     cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY); */
+        /*     cv::bitwise_or(bg_mask, mask, bg_mask); */
+        /* } */
         for(const auto& instance_image : instance_images)
         {
             cv::bitwise_or(bg_mask, instance_image.maskb_, bg_mask);
@@ -471,7 +483,7 @@ namespace oslam
     InstanceImages::const_iterator Mapper::associateObjects(const ObjectId& id,
                                                             const cv::Mat& object_render_color,
                                                             const InstanceImages& instance_images,
-                                                            std::vector<bool>& instance_matches)
+                                                            std::vector<bool>& instance_matches) const
     {
         cv::Mat gray;
         cv::cvtColor(object_render_color, gray, cv::COLOR_BGR2GRAY);
@@ -497,10 +509,17 @@ namespace oslam
             int union_val        = cv::countNonZero(union_mask);
             int intersection_val = cv::countNonZero(intersection_mask);
 
-            auto quality = static_cast<float>(intersection_val) / static_cast<float>(union_val);
+            /* cv::imshow("ObjectRender", object_render_color); */
+            /* cv::imshow(fmt::format("instance image {}", iter->label_), iter->maskb_); */
+            /* cv::imshow(fmt::format("Intersection mask {}", iter->label_), intersection_mask); */
 
+            auto quality = static_cast<float>(intersection_val) / static_cast<float>(union_val);
+            double matching_score = map_->computeObjectMatch(id, iter->feature_);
+
+            if(matching_score > 250.0)
+                continue;
             size_t curr_idx = size_t(iter - instance_images.begin());
-            spdlog::debug("{} -> Quality of the association: {}, Target label: {}", id, quality, iter->label_);
+            spdlog::debug("{} -> Quality of the association: {}, {} Target label: {}", id, quality, matching_score, iter->label_);
             if (!instance_matches.at(curr_idx) && quality > IOU_OVERLAP_THRESHOLD && union_val > MASK_AREA_THRESHOLD)
             {
                 instance_matches.at(curr_idx) = true;

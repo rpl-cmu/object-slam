@@ -65,6 +65,7 @@ namespace oslam
         std::uint64_t getObjectHash(const ObjectId& id) const;
         Eigen::Matrix4d getObjectPose(const ObjectId& id) const;
         ObjectBoundingBoxes getAllObjectBoundingBoxes() const;
+        double computeObjectMatch(const ObjectId& id, const Feature& feature) const;
 
         IdToObjectMesh meshAllObjects() const;
 

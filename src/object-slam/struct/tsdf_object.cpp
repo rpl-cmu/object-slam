@@ -17,7 +17,9 @@
 #include <memory>
 #include <mutex>
 #include <opencv2/core.hpp>
+#include <opencv2/core/base.hpp>
 #include <opencv2/core/mat.hpp>
+#include <xtensor/xmath.hpp>
 #include <tuple>
 #include <vector>
 #include "object-slam/utils/utils.h"
@@ -45,11 +47,13 @@ namespace oslam
         object_rgbd.Upload(object_depth, color);
         open3d::cuda::PointCloudCuda object_point_cloud(open3d::cuda::VertexRaw, frame.width_ * frame.height_);
         object_point_cloud.Build(object_rgbd, intrinsic_cuda_);
+        object_point_cloud.Transform(camera_pose);
 
         // Translate the object pose to point cloud center
         // T_wo = T_wc * T_co
-        pose_.block<3, 1>(0, 3) = object_point_cloud.GetCenter();
-        pose_                   = camera_pose * pose_;
+        Eigen::Matrix4d T_camera_to_object = Eigen::Matrix4d::Identity();
+        T_camera_to_object.block<3, 1>(0, 3) = object_point_cloud.GetCenter();
+        pose_                   = camera_pose * T_camera_to_object.inverse();
 
         // Appropriately size the voxel_length of volume for appropriate resolution of the object
         object_max_pt_     = Eigen::Affine3d(pose_) * object_point_cloud.GetMaxBound();
@@ -66,12 +70,12 @@ namespace oslam
         // truncation distance = 4 * voxel length
         // Allocate lower memory since we will create multiple TSDF objects
         int BUCKET_COUNT   = 2000;
-        /* int VALUE_CAPACITY = 4500; */
+        /* int VALUE_CAPACITY = 6000; */
         int VALUE_CAPACITY = 2000;
         if (instance_image.label_ == 0)
         {
             BUCKET_COUNT   = 2000;
-            /* VALUE_CAPACITY = 10000; */
+            /* VALUE_CAPACITY = 5000; */
             VALUE_CAPACITY = 3000;
             spdlog::debug("Created new background instance");
         }
@@ -102,6 +106,21 @@ namespace oslam
         auto object_depth = frame.depth_.clone();
         object_depth.setTo(0, ~instance_image.bbox_mask_);
 
+        if(!isBackground())
+        {
+            auto difference = instance_image_.feature_ - instance_image.feature_;
+            float match_score = cv::norm(difference, cv::NORM_L1);
+
+            if(match_score < 150)
+            {
+                instance_image_.feature_ = instance_image.feature_;
+                spdlog::debug("Updated feature map for the object");
+            }
+        }
+
+        /* auto match_score = xt::norm_l1(difference); */
+
+        /* spdlog::info("Matching score between object: {}", match_score); */
         open3d::cuda::RGBDImageCuda object_rgbd_cuda;
         object_rgbd_cuda.Upload(object_depth, color);
 

@@ -25,14 +25,24 @@ namespace oslam
         OSLAM_POINTER_TYPEDEFS(InstanceImage);
 
         static constexpr int BORDER_WIDTH = 2;
-        cv::Mat maskb_;     //!< Store the float value of the object confidence in the image pixels in the mask
+        cv::Mat maskb_;  //!< Store the float value of the object confidence in the image pixels in the mask
+        Feature feature_;
         BoundingBox bbox_;  //!< Binary image which masks the rectangular box of the image
         cv::Mat bbox_mask_;
         unsigned int label_;
         double score_;
 
-        explicit InstanceImage(const cv::Mat& mask, const BoundingBox& bbox, unsigned int label, double score)
-            : maskb_(mask), bbox_(bbox), bbox_mask_(mask.size(), CV_8UC1, cv::Scalar(0)), label_(label), score_(score)
+        explicit InstanceImage(const cv::Mat& mask,
+                               const BoundingBox& bbox,
+                               unsigned int label,
+                               double score,
+                               const Feature& feature = Feature())
+            : maskb_(mask),
+              feature_(feature),
+              bbox_(bbox),
+              bbox_mask_(mask.size(), CV_8UC1, cv::Scalar(0)),
+              label_(label),
+              score_(score)
         {
             //! Sanity shrinking
             bbox_[0] = std::min(std::max(bbox_[0], 0), mask.cols);
@@ -57,6 +67,7 @@ namespace oslam
 
         InstanceImage(int width, int height)
             : maskb_(height, width, CV_8UC1, 1),
+              feature_(),
               bbox_({ 0, 0, width, height }),
               bbox_mask_(height, width, CV_8UC1, 255),
               label_(0),

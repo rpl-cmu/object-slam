@@ -17,6 +17,7 @@ message MaskImage {
     int32 num_channels = 3;
     int32 bytes_per_channel = 4;
     bytes data = 5;
+    bytes features = 9;
     repeated uint32 labels = 6;
     repeated double scores = 7;
 

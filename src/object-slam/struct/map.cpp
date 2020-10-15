@@ -101,6 +101,7 @@ namespace oslam
 
             if (isObjectInFrustum(object, camera_pose))
             {
+
                 //! TODO: Render the objects
                 spdlog::info("Current object ID: {} is in frustum", id);
                 cuda::ImageCuda<float, 3> vertex;
@@ -117,6 +118,7 @@ namespace oslam
                 cv::Mat vertex_map = vertex.DownloadMat();
                 cv::Mat normal_map = normal.DownloadMat();
 
+                cv::imshow(fmt::format("Object Render {}", id), color_map);
                 object_renders.emplace_back(id, Render(color_map, vertex_map, normal_map));
             }
             else
@@ -198,7 +200,7 @@ namespace oslam
             double existence_expect = object->getExistExpectation();
             spdlog::debug("{} -> Existence expectation: {}", id, existence_expect);
 
-            if (existence_expect < 0.2)
+            if (existence_expect <= 0.15)
             {
                 to_delete_objects.push_back(id);
                 to_delete_object_keys.push_back(object->hash(id));
@@ -408,6 +410,16 @@ namespace oslam
             gtsam::Pose3 updatedPose                      = values.at<gtsam::Pose3>(camera_key);
             camera_trajectory_.at(keyframe_timestamp - 1) = updatedPose.matrix();
         }
+    }
+
+    double Map::computeObjectMatch(const ObjectId& id, const Feature& feature) const
+    {
+        std::scoped_lock<std::mutex> lock_integrate_object(mutex_);
+        const TSDFObject::Ptr& object = id_to_object_.at(id);
+        const Feature& object_feature = object->instance_image_.feature_;
+
+        auto difference = object_feature - feature;
+        return cv::norm(difference, cv::NORM_L1);
     }
 
 }  // namespace oslam

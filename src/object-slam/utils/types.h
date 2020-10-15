@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <functional>
 #include <Eigen/Eigen>
+#include <opencv2/opencv.hpp>
 
 #include <fmt/ostream.h>
 
@@ -22,6 +23,7 @@ namespace oslam
     using FrameId = std::uint64_t;
 
     using BoundingBox = std::array<int, 4>;
+    using Feature = cv::Vec<float, 1024>;
 
     using PoseTrajectory = std::vector<Eigen::Matrix4d, Eigen::aligned_allocator<Eigen::Matrix4d>>;
     //! Hashable object id struct

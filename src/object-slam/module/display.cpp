@@ -100,7 +100,7 @@ namespace oslam
         {
             //! TODO: Callback to shutdown entire pipeline!
         }
-
+        window_3d_.removeAllWidgets();
         for(auto it = widgets_map.begin(); it != widgets_map.end(); ++it)
         {
             spdlog::debug("Showed widget: {}", it->first);

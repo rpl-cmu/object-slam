@@ -56,6 +56,7 @@ namespace oslam
             cv::imshow("Background render", color_map);
 
             all_renders.emplace_back(map_->getBackgroundId(), Render(color_map, vertex_map, normal_map));
+            /* all_renders.emplace_back(map_->getBackgroundId(), background_render); */
 
             std::vector<cv::Mat> depth_array;
             std::vector<cv::Mat> color_array;

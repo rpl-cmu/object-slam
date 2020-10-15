@@ -15,6 +15,8 @@
 #include <memory>
 #include <mutex>
 #include <opencv2/highgui.hpp>
+#include <xtensor/xadapt.hpp>
+#include <xtensor/xview.hpp>
 #include <zmq.hpp>
 
 namespace oslam
@@ -79,6 +81,8 @@ namespace oslam
         std::string input_data(mask_pbuf.data());
         cv::Mat image(mask_pbuf.height(), mask_pbuf.width(), CV_16UC1, input_data.data());
 
+        std::string input_features(mask_pbuf.features());
+        cv::Mat feature_vector(1024, mask_pbuf.labels_size(), CV_32FC1, input_features.data());
         ImageTransportOutput::UniquePtr output = std::make_unique<ImageTransportOutput>(timestamp);
         for (int i = 0; i < mask_pbuf.labels_size(); i++)
         {
@@ -91,7 +95,9 @@ namespace oslam
             cv::Mat curr_mask;
             cv::bitwise_and(image, static_cast<std::uint16_t>(1U << i), curr_mask);
             curr_mask = (curr_mask >= 1);
-            output->instance_images_.emplace_back(curr_mask, curr_bbox, curr_label, curr_score);
+
+            Feature feature = feature_vector.col(i);
+            output->instance_images_.emplace_back(curr_mask,  curr_bbox, curr_label, curr_score, feature);
         }
         return output;
     }

@@ -47,7 +47,6 @@ def get_masks(predictions, image):
     if "instances" not in predictions:
         return
 
-
     instances = predictions["instances"]
     if not instances.has("pred_masks"):
         return
@@ -55,9 +54,15 @@ def get_masks(predictions, image):
     if not instances.has("pred_boxes"):
         return
 
+    if not instances.has("pred_features"):
+        return
+
     mask = instances.pred_masks.cpu()
     # Convert from (N, H, W) to (H, W, N) tensor
     mask = mask.permute(1, 2, 0).numpy()
+
+    features = instances.pred_features.cpu()
+    features = features.permute(1, 0).numpy()
 
     dst_mask = np.zeros((image).shape[:2], dtype=np.uint16)
     # bitwise encode a max of 16 masks in 16-bit image
@@ -75,8 +80,7 @@ def get_masks(predictions, image):
             bboxes = instances.pred_boxes.tensor.cpu().numpy()
     processed_image = dst_mask.astype(np.uint16)
 
-    return processed_image, classes, scores, bboxes
-
+    return processed_image, features, classes, scores, bboxes
 
 
 def main():
@@ -86,14 +90,15 @@ def main():
     :returns: TODO
 
     """
-
     context = zmq.Context()
     reply_sock = context.socket(zmq.REP)
     reply_sock.bind("tcp://*:5555")
 
     config_file = "../3rdparty/detectron2/projects/PointRend/configs/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco.yaml"
+    # config_file = "../3rdparty/detectron2/configs/COCO-InstanceSegmentation/mask_rcnn_X_101_32x8d_FPN_3x.yaml"
     weights_file = "https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/model_final_3c3198.pkl"
-
+    # weights_file = "https://dl.fbaipublicfiles.com/detectron2/COCO-InstanceSegmentation/mask_rcnn_R_101_FPN_3x/138205316/model_final_a3ec72.pkl"
+    # weights_file = "https://dl.fbaipublicfiles.com/detectron2/COCO-InstanceSegmentation/mask_rcnn_X_101_32x8d_FPN_3x/139653917/model_final_2d9806.pkl"
     cfg = create_cfg(config_file, weights_file)
     predictor = DefaultPredictor(cfg)
     idx = 0
@@ -108,7 +113,7 @@ def main():
             image = image[20:-20, 20:-20]
             print(f"Processing request: {idx}")
             predictions = predictor(image)
-            processed_image, classes, scores, bboxes = get_masks(predictions, image)
+            processed_image, features, classes, scores, bboxes = get_masks(predictions, image)
             processed_image = np.pad(processed_image, 20, 'constant')
             mask_image = MaskImage()
             mask_image.width = color_image.width
@@ -118,6 +123,7 @@ def main():
             mask_image.data = processed_image.tobytes()
             mask_image.labels.extend(classes)
             mask_image.scores.extend(scores)
+            mask_image.features = features.tobytes()
             for bbox in bboxes:
                 bbox = bbox + 20;
                 boundingbox = mask_image.bboxes.add()

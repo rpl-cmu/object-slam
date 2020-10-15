@@ -53,7 +53,7 @@ namespace oslam
         virtual void setMaxTimestamp(Timestamp timestamp) { max_timestamp_ = timestamp; }
 
        private:
-        constexpr static double SCORE_THRESHOLD      = 0.5;
+        constexpr static double SCORE_THRESHOLD      = 0.65;
         constexpr static float IOU_OVERLAP_THRESHOLD = 0.2F;
         constexpr static int MASK_AREA_THRESHOLD     = 2500;
         constexpr static int BACKGROUND_RESOLUTION   = 256;
@@ -70,7 +70,7 @@ namespace oslam
                                    const InstanceImages& instance_images,
                                    InstanceImages& projected_instance_images);
 
-        InstanceImage createBgInstanceImage(const Frame& frame, const InstanceImages& instance_images) const;
+        InstanceImage createBgInstanceImage(const Frame& frame, const Renders& object_renders, const InstanceImages& instance_images) const;
 
         bool shouldCreateNewBackground(Timestamp timestamp);
         static TSDFObject::UniquePtr createBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose);
@@ -78,10 +78,10 @@ namespace oslam
                                                   const InstanceImage& instance_image,
                                                   const Eigen::Matrix4d& camera_pose);
 
-        static InstanceImages::const_iterator associateObjects(const ObjectId& id,
+        InstanceImages::const_iterator associateObjects(const ObjectId& id,
                                                                const cv::Mat& object_render_color,
                                                                const InstanceImages& instance_images,
-                                                               std::vector<bool>& instance_matches);
+                                                               std::vector<bool>& instance_matches) const;
 
         void updateMap(const gtsam::Values& values);
 
