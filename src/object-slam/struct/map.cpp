@@ -102,6 +102,9 @@ namespace oslam
             if (isObjectInFrustum(object, camera_pose))
             {
 
+                if(object->volume_.device_ == nullptr)
+                    object->uploadVolumeToGPU();
+
                 //! TODO: Render the objects
                 spdlog::info("Current object ID: {} is in frustum", id);
                 cuda::ImageCuda<float, 3> vertex;
@@ -125,6 +128,7 @@ namespace oslam
             {
                 //! Download the object onto CPU memory
                 spdlog::info("Current object ID: {} is not in frustum", id);
+                object->downloadVolumeToCPU();
             }
 
         }

@@ -14,6 +14,7 @@
 #include <Open3D/Visualization/Utility/DrawGeometry.h>
 #include <spdlog/spdlog.h>
 
+#include <cassert>
 #include <memory>
 #include <mutex>
 #include <opencv2/core.hpp>
@@ -173,8 +174,16 @@ namespace oslam
 
     void TSDFObject::downloadVolumeToCPU()
     {
-        volume_cpu_ = std::make_optional(volume_.DownloadVolumes());
-        volume_.Release();
+        if(volume_.device_)
+        {
+            volume_cpu_ = std::make_optional(volume_.DownloadVolumes());
+            volume_.ReleaseVolume();
+        }
+        else
+        {
+            assert(volume_cpu_.has_value());
+            spdlog::warn("Object already downloaded, not attempted download");
+        }
     }
 
     void TSDFObject::uploadVolumeToGPU()
@@ -184,8 +193,15 @@ namespace oslam
             spdlog::error("CPU data does not contain value, cannot upload");
             assert(false);
         }
+        if (volume_.device_)
+        {
+            spdlog::warn("Object already on GPU, not uploading");
+            return;
+        }
         auto keys    = volume_cpu_->first;
         auto volumes = volume_cpu_->second;
+
+        spdlog::info("Length of keys: {}, length of volumes: {}", keys.size(), volumes.size());
 
         volume_.UploadVolumes(keys, volumes);
         volume_cpu_.reset();
