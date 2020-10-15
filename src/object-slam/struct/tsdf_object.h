@@ -84,8 +84,11 @@ namespace oslam
         constexpr static float VOLUME_SIZE_SCALE          = 0.7F;
         constexpr static float TSDF_TRUNCATION_SCALE      = 5.0F;
         constexpr static int RETROSPECT_VISIBILITY_THRESH = 5;
+        int BUCKET_COUNT_   = 3000;
+        int VALUE_CAPACITY_ = 3000;
 
         int resolution_;                //!< Resolution for the object volume (about 128^3 voxels)
+        float voxel_length_ = 0.0f;
         InstanceImage instance_image_;  //!< Object semantic information
         Eigen::Matrix4d pose_;          //!< Object pose w.r.t world frame T_o_w
         open3d::camera::PinholeCameraIntrinsic intrinsic_;

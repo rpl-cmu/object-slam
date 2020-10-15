@@ -103,7 +103,10 @@ namespace oslam
             {
 
                 if(object->volume_.device_ == nullptr)
+                {
+                    spdlog::debug("Uploading object to GPU");
                     object->uploadVolumeToGPU();
+                }
 
                 //! TODO: Render the objects
                 spdlog::info("Current object ID: {} is in frustum", id);

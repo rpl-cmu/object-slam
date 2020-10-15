@@ -59,10 +59,10 @@ namespace oslam
         // Appropriately size the voxel_length of volume for appropriate resolution of the object
         object_max_pt_     = Eigen::Affine3d(pose_) * object_point_cloud.GetMaxBound();
         object_min_pt_     = Eigen::Affine3d(pose_) * object_point_cloud.GetMinBound();
-        float voxel_length = VOLUME_SIZE_SCALE * float((object_max_pt_ - object_min_pt_).maxCoeff() / resolution);
+        voxel_length_ = VOLUME_SIZE_SCALE * float((object_max_pt_ - object_min_pt_).maxCoeff() / resolution);
 
         spdlog::debug("Volume pose\n {}", pose_);
-        spdlog::debug("Voxel length: {}", voxel_length);
+        spdlog::debug("Voxel length: {}", voxel_length_);
 
         // TODO: Check if this should be camera pose
         cuda::TransformCuda object_pose_cuda;
@@ -70,14 +70,10 @@ namespace oslam
 
         // truncation distance = 4 * voxel length
         // Allocate lower memory since we will create multiple TSDF objects
-        int BUCKET_COUNT   = 2000;
-        /* int VALUE_CAPACITY = 6000; */
-        int VALUE_CAPACITY = 2000;
         if (instance_image.label_ == 0)
         {
-            BUCKET_COUNT   = 2000;
-            /* VALUE_CAPACITY = 5000; */
-            VALUE_CAPACITY = 3000;
+            BUCKET_COUNT_   = 2000;
+            VALUE_CAPACITY_ = 2000;
             spdlog::debug("Created new background instance");
         }
         else
@@ -85,11 +81,11 @@ namespace oslam
             spdlog::debug("Created new object instance");
         }
         volume_ = cuda::ScalableTSDFVolumeCuda(SUBVOLUME_RES,
-                                               voxel_length,
-                                               TSDF_TRUNCATION_SCALE * voxel_length,
+                                               voxel_length_,
+                                               TSDF_TRUNCATION_SCALE * voxel_length_,
                                                object_pose_cuda,
-                                               BUCKET_COUNT,
-                                               VALUE_CAPACITY);
+                                               BUCKET_COUNT_,
+                                               VALUE_CAPACITY_);
         //! Empty until the first time the object goes out of camera frustum
         volume_cpu_ = std::nullopt;
     }
@@ -177,7 +173,7 @@ namespace oslam
         if(volume_.device_)
         {
             volume_cpu_ = std::make_optional(volume_.DownloadVolumes());
-            volume_.ReleaseVolume();
+            volume_.Release();
         }
         else
         {
@@ -202,8 +198,18 @@ namespace oslam
         auto volumes = volume_cpu_->second;
 
         spdlog::info("Length of keys: {}, length of volumes: {}", keys.size(), volumes.size());
+        cuda::TransformCuda object_pose_cuda;
+        object_pose_cuda.FromEigen(pose_);
 
-        volume_.UploadVolumes(keys, volumes);
+        cuda::ScalableTSDFVolumeCuda new_volume = cuda::ScalableTSDFVolumeCuda(SUBVOLUME_RES,
+                                               voxel_length_,
+                                               TSDF_TRUNCATION_SCALE * voxel_length_,
+                                               object_pose_cuda,
+                                               BUCKET_COUNT_,
+                                               VALUE_CAPACITY_);
+
+        new_volume.UploadVolumes(keys, volumes);
+        std::swap(volume_, new_volume);
         volume_cpu_.reset();
     }
 
