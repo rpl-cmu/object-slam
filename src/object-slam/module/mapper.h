@@ -8,8 +8,8 @@
 #ifndef OSLAM_MAPPER_H
 #define OSLAM_MAPPER_H
 
-#include <Eigen/Eigen>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
+#include <Eigen/Eigen>
 
 #include <limits>
 #include <vector>
@@ -53,11 +53,12 @@ namespace oslam
         virtual void setMaxTimestamp(Timestamp timestamp) { max_timestamp_ = timestamp; }
 
        private:
-        constexpr static double SCORE_THRESHOLD      = 0.65;
-        constexpr static float IOU_OVERLAP_THRESHOLD = 0.2F;
-        constexpr static int MASK_AREA_THRESHOLD     = 2500;
-        constexpr static int BACKGROUND_RESOLUTION   = 256;
-        constexpr static int OBJECT_RESOLUTION       = 128;
+        constexpr static double SCORE_THRESHOLD           = 0.6;
+        constexpr static float IOU_OVERLAP_THRESHOLD      = 0.2F;
+        constexpr static float HIGH_IOU_OVERLAP_THRESHOLD = 0.4F;
+        constexpr static int MASK_AREA_THRESHOLD          = 2500;
+        constexpr static int BACKGROUND_RESOLUTION        = 256;
+        constexpr static int OBJECT_RESOLUTION            = 128;
 
         virtual InputUniquePtr getInputPacket() override;
 
@@ -70,7 +71,9 @@ namespace oslam
                                    const InstanceImages& instance_images,
                                    InstanceImages& projected_instance_images);
 
-        InstanceImage createBgInstanceImage(const Frame& frame, const Renders& object_renders, const InstanceImages& instance_images) const;
+        InstanceImage createBgInstanceImage(const Frame& frame,
+                                            const Renders& object_renders,
+                                            const InstanceImages& instance_images) const;
 
         bool shouldCreateNewBackground(Timestamp timestamp);
         static TSDFObject::UniquePtr createBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose);
@@ -79,9 +82,9 @@ namespace oslam
                                                   const Eigen::Matrix4d& camera_pose);
 
         InstanceImages::const_iterator associateObjects(const ObjectId& id,
-                                                               const cv::Mat& object_render_color,
-                                                               const InstanceImages& instance_images,
-                                                               std::vector<bool>& instance_matches) const;
+                                                        const cv::Mat& object_render_color,
+                                                        const InstanceImages& instance_images,
+                                                        std::vector<bool>& instance_matches) const;
 
         void updateMap(const gtsam::Values& values);
 

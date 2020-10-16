@@ -124,7 +124,6 @@ namespace oslam
                 cv::Mat vertex_map = vertex.DownloadMat();
                 cv::Mat normal_map = normal.DownloadMat();
 
-                cv::imshow(fmt::format("Object Render {}", id), color_map);
                 object_renders.emplace_back(id, Render(color_map, vertex_map, normal_map));
             }
             else
@@ -207,7 +206,7 @@ namespace oslam
             double existence_expect = object->getExistExpectation();
             spdlog::debug("{} -> Existence expectation: {}", id, existence_expect);
 
-            if (existence_expect <= 0.15)
+            if (existence_expect <= 0.1)
             {
                 to_delete_objects.push_back(id);
                 to_delete_object_keys.push_back(object->hash(id));

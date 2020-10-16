@@ -20,9 +20,9 @@
 #include <opencv2/core.hpp>
 #include <opencv2/core/base.hpp>
 #include <opencv2/core/mat.hpp>
-#include <xtensor/xmath.hpp>
 #include <tuple>
 #include <vector>
+#include <xtensor/xmath.hpp>
 #include "object-slam/utils/utils.h"
 
 namespace oslam
@@ -50,15 +50,15 @@ namespace oslam
         object_point_cloud.Build(object_rgbd, intrinsic_cuda_);
         object_point_cloud.Transform(camera_pose);
 
+        object_max_pt_ = Eigen::Affine3d(pose_) * object_point_cloud.GetMaxBound();
+        object_min_pt_ = Eigen::Affine3d(pose_) * object_point_cloud.GetMinBound();
         // Translate the object pose to point cloud center
         // T_wo = T_wc * T_co
-        Eigen::Matrix4d T_camera_to_object = Eigen::Matrix4d::Identity();
-        T_camera_to_object.block<3, 1>(0, 3) = object_point_cloud.GetCenter();
-        pose_                   = camera_pose * T_camera_to_object.inverse();
+        Eigen::Matrix4d T_camera_to_object   = Eigen::Matrix4d::Identity();
+        T_camera_to_object.block<3, 1>(0, 3) = object_min_pt_;
+        pose_                                = camera_pose * T_camera_to_object.inverse();
 
         // Appropriately size the voxel_length of volume for appropriate resolution of the object
-        object_max_pt_     = Eigen::Affine3d(pose_) * object_point_cloud.GetMaxBound();
-        object_min_pt_     = Eigen::Affine3d(pose_) * object_point_cloud.GetMinBound();
         voxel_length_ = VOLUME_SIZE_SCALE * float((object_max_pt_ - object_min_pt_).maxCoeff() / resolution);
 
         spdlog::debug("Volume pose\n {}", pose_);
@@ -72,8 +72,8 @@ namespace oslam
         // Allocate lower memory since we will create multiple TSDF objects
         if (instance_image.label_ == 0)
         {
-            BUCKET_COUNT_   = 2000;
-            VALUE_CAPACITY_ = 2000;
+            BUCKET_COUNT_   = 12000;
+            VALUE_CAPACITY_ = 12000;
             spdlog::debug("Created new background instance");
         }
         else
@@ -93,7 +93,7 @@ namespace oslam
     void TSDFObject::integrate(const Frame &frame, const InstanceImage &instance_image, const Eigen::Matrix4d &camera_pose)
     {
         std::scoped_lock<std::mutex> lock_integration(mutex_);
-
+        spdlog::trace("Entered integrate for object: {}", id_);
         if (volume_.device_ == nullptr)
         {
             spdlog::error("Volume downloaded into CPU, cannot integrate");
@@ -103,12 +103,12 @@ namespace oslam
         auto object_depth = frame.depth_.clone();
         object_depth.setTo(0, ~instance_image.bbox_mask_);
 
-        if(!isBackground())
+        if (!isBackground())
         {
-            auto difference = instance_image_.feature_ - instance_image.feature_;
+            auto difference   = instance_image_.feature_ - instance_image.feature_;
             float match_score = cv::norm(difference, cv::NORM_L1);
 
-            if(match_score < 150)
+            if (match_score < 150)
             {
                 instance_image_.feature_ = instance_image.feature_;
                 spdlog::debug("Updated feature map for the object");
@@ -121,14 +121,15 @@ namespace oslam
         open3d::cuda::RGBDImageCuda object_rgbd_cuda;
         object_rgbd_cuda.Upload(object_depth, color);
 
-        open3d::cuda::TransformCuda camera_to_world_cuda;
-        camera_to_world_cuda.FromEigen(camera_pose);
+        open3d::cuda::TransformCuda camera_to_object_cuda;
+        /* Eigen::Matrix4d camera_to_object = pose_.inverse() * camera_pose; */
+        camera_to_object_cuda.FromEigen(camera_pose);
 
         open3d::cuda::ImageCuda<uchar, 1> mask_cuda;
         mask_cuda.Upload(instance_image.maskb_);
 
         volume_.Integrate(
-            object_rgbd_cuda, intrinsic_cuda_, camera_to_world_cuda, static_cast<int>(frame.timestamp_), mask_cuda);
+            object_rgbd_cuda, intrinsic_cuda_, camera_to_object_cuda, static_cast<int>(frame.timestamp_), mask_cuda);
 
 #ifdef OSLAM_DEBUG_VIS
         if (frame.timestamp_ % 100 == 0)
@@ -138,8 +139,9 @@ namespace oslam
                 open3d::cuda::VertexWithColor, 16, volume_.active_subvolume_entry_array_.size(), 200000, 400000);
             mesher.MarchingCubes(volume_);
             auto mesh = mesher.mesh().Download();
-            auto aabb = std::make_shared<open3d::geometry::AxisAlignedBoundingBox>(volume_.GetMinBound(), volume_.GetMaxBound());
-            open3d::visualization::DrawGeometries({ mesh , aabb}, "Mesh after integration");
+            auto aabb =
+                std::make_shared<open3d::geometry::AxisAlignedBoundingBox>(volume_.GetMinBound(), volume_.GetMaxBound());
+            open3d::visualization::DrawGeometries({ mesh, aabb }, "Mesh after integration");
             mesher.Release();
         }
 #endif
@@ -156,6 +158,7 @@ namespace oslam
             spdlog::error("Volume downloaded into CPU, cannot raycast");
         }
         open3d::cuda::TransformCuda camera_to_object_cuda;
+        /* Eigen::Matrix4d camera_to_object = pose_.inverse() * camera_pose; */
         camera_to_object_cuda.FromEigen(camera_pose);
         volume_.RayCasting(vertex, normal, color, intrinsic_cuda_, camera_to_object_cuda);
     }
@@ -170,25 +173,17 @@ namespace oslam
 
     void TSDFObject::downloadVolumeToCPU()
     {
-        if(volume_.device_)
+        assert(volume_cpu_.has_value() && !volume_.device_);
+        if (volume_.device_)
         {
             volume_cpu_ = std::make_optional(volume_.DownloadVolumes());
             volume_.Release();
-        }
-        else
-        {
-            assert(volume_cpu_.has_value());
-            spdlog::warn("Object already downloaded, not attempted download");
         }
     }
 
     void TSDFObject::uploadVolumeToGPU()
     {
-        if (!volume_cpu_.has_value())
-        {
-            spdlog::error("CPU data does not contain value, cannot upload");
-            assert(false);
-        }
+        assert(volume_cpu.has_value());
         if (volume_.device_)
         {
             spdlog::warn("Object already on GPU, not uploading");
@@ -202,11 +197,11 @@ namespace oslam
         object_pose_cuda.FromEigen(pose_);
 
         cuda::ScalableTSDFVolumeCuda new_volume = cuda::ScalableTSDFVolumeCuda(SUBVOLUME_RES,
-                                               voxel_length_,
-                                               TSDF_TRUNCATION_SCALE * voxel_length_,
-                                               object_pose_cuda,
-                                               BUCKET_COUNT_,
-                                               VALUE_CAPACITY_);
+                                                                               voxel_length_,
+                                                                               TSDF_TRUNCATION_SCALE * voxel_length_,
+                                                                               object_pose_cuda,
+                                                                               BUCKET_COUNT_,
+                                                                               VALUE_CAPACITY_);
 
         new_volume.UploadVolumes(keys, volumes);
         std::swap(volume_, new_volume);

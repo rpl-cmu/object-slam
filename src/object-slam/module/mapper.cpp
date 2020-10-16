@@ -191,23 +191,23 @@ namespace oslam
         //! Stores iterators to the factors associated with keys to be deleted
         std::set<size_t> removed_factor_slots;
         const gtsam::VariableIndex variable_index(pose_graph_);
-        for (const auto& object_key : deleted_object_keys)
-        {
-            if(pose_values_.exists(object_key))
-            {
-                const auto& slots = variable_index[object_key];
-                removed_factor_slots.insert(slots.begin(), slots.end());
-                pose_values_.erase(object_key);
-            }
-        }
-        //! TODO: Replace the removed factors with marginalized factor??
-        for(size_t slot: removed_factor_slots)
-        {
-            if(pose_graph_.at(slot))
-            {
-                pose_graph_.remove(slot);
-            }
-        }
+        /* for (const auto& object_key : deleted_object_keys) */
+        /* { */
+        /*     if(pose_values_.exists(object_key)) */
+        /*     { */
+        /*         const auto& slots = variable_index[object_key]; */
+        /*         removed_factor_slots.insert(slots.begin(), slots.end()); */
+        /*         pose_values_.erase(object_key); */
+        /*     } */
+        /* } */
+        /* //! TODO: Replace the removed factors with marginalized factor?? */
+        /* for(size_t slot: removed_factor_slots) */
+        /* { */
+        /*     if(pose_graph_.at(slot)) */
+        /*     { */
+        /*         pose_graph_.remove(slot); */
+        /*     } */
+        /* } */
 
         if (shouldCreateNewBackground(curr_timestamp_))
         {
@@ -509,14 +509,10 @@ namespace oslam
             int union_val        = cv::countNonZero(union_mask);
             int intersection_val = cv::countNonZero(intersection_mask);
 
-            /* cv::imshow("ObjectRender", object_render_color); */
-            /* cv::imshow(fmt::format("instance image {}", iter->label_), iter->maskb_); */
-            /* cv::imshow(fmt::format("Intersection mask {}", iter->label_), intersection_mask); */
-
             auto quality = static_cast<float>(intersection_val) / static_cast<float>(union_val);
             double matching_score = map_->computeObjectMatch(id, iter->feature_);
 
-            if(matching_score > 250.0)
+            if(matching_score >= 300.0 && quality < HIGH_IOU_OVERLAP_THRESHOLD)
                 continue;
             size_t curr_idx = size_t(iter - instance_images.begin());
             spdlog::debug("{} -> Quality of the association: {}, {} Target label: {}", id, quality, matching_score, iter->label_);
