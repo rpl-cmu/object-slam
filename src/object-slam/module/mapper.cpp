@@ -125,6 +125,7 @@ namespace oslam
                 {
                     initializeMapAndGraph(frame, instance_images, relative_camera_pose);
                     object_renders = map_->renderObjects(frame, relative_camera_pose);
+                    spdlog::info("Rendered all objects in frame 1");
                     bg_instance = createBgInstanceImage(frame, object_renders, instance_images);
                     mapper_status  = MapperStatus::VALID;
                     break;
@@ -175,10 +176,7 @@ namespace oslam
                     if (num_created)
                     {
                         needs_optimization = true;
-                        bg_instance = InstanceImage(frame.width_, frame.height_);
                     }
-
-
                     mapper_status = MapperStatus::VALID;
                     break;
                 }
@@ -191,23 +189,23 @@ namespace oslam
         //! Stores iterators to the factors associated with keys to be deleted
         std::set<size_t> removed_factor_slots;
         const gtsam::VariableIndex variable_index(pose_graph_);
-        /* for (const auto& object_key : deleted_object_keys) */
-        /* { */
-        /*     if(pose_values_.exists(object_key)) */
-        /*     { */
-        /*         const auto& slots = variable_index[object_key]; */
-        /*         removed_factor_slots.insert(slots.begin(), slots.end()); */
-        /*         pose_values_.erase(object_key); */
-        /*     } */
-        /* } */
-        /* //! TODO: Replace the removed factors with marginalized factor?? */
-        /* for(size_t slot: removed_factor_slots) */
-        /* { */
-        /*     if(pose_graph_.at(slot)) */
-        /*     { */
-        /*         pose_graph_.remove(slot); */
-        /*     } */
-        /* } */
+        for (const auto& object_key : deleted_object_keys)
+        {
+            if(pose_values_.exists(object_key))
+            {
+                const auto& slots = variable_index[object_key];
+                removed_factor_slots.insert(slots.begin(), slots.end());
+                pose_values_.erase(object_key);
+            }
+        }
+        //! TODO: Replace the removed factors with marginalized factor??
+        for(size_t slot: removed_factor_slots)
+        {
+            if(pose_graph_.at(slot))
+            {
+                pose_graph_.remove(slot);
+            }
+        }
 
         if (shouldCreateNewBackground(curr_timestamp_))
         {
@@ -308,9 +306,9 @@ namespace oslam
                 cuda::SegmentationCuda::TransformAndProject(src_mask, depth, T_keyframe_to_camera_cuda, intrinsic_cuda);
             cv::Mat proj_mask = proj_mask_cuda.DownloadMat();
 
-            /* cv::Mat mask_flood = proj_mask.clone(); */
-            /* cv::floodFill(mask_flood, cv::Point(0, 0), cv::Scalar(255)); */
-            /* proj_mask = (proj_mask | ~mask_flood); */
+            cv::Mat mask_flood = proj_mask.clone();
+            cv::floodFill(mask_flood, cv::Point(0, 0), cv::Scalar(255));
+            proj_mask = (proj_mask | ~mask_flood);
 
             BoundingBox proj_bbox;
             transform_project_bbox(instance_image.bbox_, proj_bbox, depthf, frame.intrinsic_, T_keyframe_to_camera);
@@ -321,15 +319,15 @@ namespace oslam
     InstanceImage Mapper::createBgInstanceImage(const Frame& frame, const Renders& object_renders, const InstanceImages& instance_images) const
     {
         cv::Mat bg_mask = cv::Mat::zeros(frame.height_, frame.width_, CV_8UC1);
-        /* for(const auto& render_pair : object_renders) */
-        /* { */
-        /*     const Render& object_render = render_pair.second; */
-        /*     cv::Mat gray; */
-        /*     cv::cvtColor(object_render.color_map_, gray, cv::COLOR_BGR2GRAY); */
-        /*     cv::Mat mask; */
-        /*     cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY); */
-        /*     cv::bitwise_or(bg_mask, mask, bg_mask); */
-        /* } */
+        for(const auto& render_pair : object_renders)
+        {
+            const Render& object_render = render_pair.second;
+            cv::Mat gray;
+            cv::cvtColor(object_render.color_map_, gray, cv::COLOR_BGR2GRAY);
+            cv::Mat mask;
+            cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY);
+            cv::bitwise_or(bg_mask, mask, bg_mask);
+        }
         for(const auto& instance_image : instance_images)
         {
             cv::bitwise_or(bg_mask, instance_image.maskb_, bg_mask);
@@ -491,6 +489,8 @@ namespace oslam
         cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY);
 
         auto iter = instance_images.begin();
+        std::vector<double> geometric_quality;
+        std::vector<double> semantic_quality;
         for (; iter != instance_images.end(); ++iter)
         {
             if (iter->score_ < SCORE_THRESHOLD)
@@ -509,6 +509,9 @@ namespace oslam
             int union_val        = cv::countNonZero(union_mask);
             int intersection_val = cv::countNonZero(intersection_mask);
 
+            //! Object did not get rendered, nor was there a detection
+            if (union_val < 10)
+                continue;
             auto quality = static_cast<float>(intersection_val) / static_cast<float>(union_val);
             double matching_score = map_->computeObjectMatch(id, iter->feature_);
 

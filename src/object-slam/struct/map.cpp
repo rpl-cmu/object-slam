@@ -124,6 +124,8 @@ namespace oslam
                 cv::Mat vertex_map = vertex.DownloadMat();
                 cv::Mat normal_map = normal.DownloadMat();
 
+                cv::imshow("Object render", color_map);
+
                 object_renders.emplace_back(id, Render(color_map, vertex_map, normal_map));
             }
             else
@@ -181,8 +183,9 @@ namespace oslam
         {
             const ObjectId& id     = object_pair.first;
             TSDFObject::Ptr object = object_pair.second;
+            spdlog::info("Meshing object: {}", id);
             ScalableMeshVolumeCuda object_mesher(
-                VertexType::VertexWithColor, 16, object->volume_.active_subvolume_entry_array_.size(), 50000, 100000);
+                VertexType::VertexWithColor, 16, object->volume_.active_subvolume_entry_array_.size(), 5000, 10000);
 
             object_mesher.MarchingCubes(object->volume_);
             auto mesh = object_mesher.mesh().Download();

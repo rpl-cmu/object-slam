@@ -15,6 +15,7 @@
 #include <zmq.hpp>
 
 #include "object-slam/struct/map.h"
+#include "object-slam/utils/types.h"
 #include "object-slam/utils/macros.h"
 
 #include "object-slam/module/image_transport.h"
@@ -36,7 +37,7 @@ namespace oslam
         OSLAM_DELETE_COPY_CONSTRUCTORS(Controller);
         OSLAM_DELETE_MOVE_CONSTRUCTORS(Controller);
 
-        explicit Controller(std::string dataset_path);
+        explicit Controller(std::string dataset_path, DatasetType dataset_type);
         virtual ~Controller() = default;
 
         bool start();
@@ -47,7 +48,6 @@ namespace oslam
         bool shutdownWhenComplete();
         void shutdown();
 
-        std::string dataset_path_;
         std::atomic_bool shutdown_ = { false };
 
         std::shared_ptr<Map> map_;

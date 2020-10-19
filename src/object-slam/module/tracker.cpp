@@ -28,7 +28,7 @@ namespace oslam
     Tracker::Tracker(OutputQueue* output_queue)
         : MISO(output_queue, "Tracker"), frame_queue_("TrackerFrameQueue"), model_queue_("TrackerModelQueue")
     {
-        spdlog::debug("CONSTRUCT: Tracker");
+        spdlog::trace("CONSTRUCT: Tracker");
     }
 
     Tracker::InputUniquePtr Tracker::getInputPacket()

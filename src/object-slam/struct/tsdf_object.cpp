@@ -48,6 +48,7 @@ namespace oslam
         object_rgbd.Upload(object_depth, color);
         open3d::cuda::PointCloudCuda object_point_cloud(open3d::cuda::VertexRaw, frame.width_ * frame.height_);
         object_point_cloud.Build(object_rgbd, intrinsic_cuda_);
+        // Move object point cloud to F_{W}
         object_point_cloud.Transform(camera_pose);
 
         object_max_pt_ = Eigen::Affine3d(pose_) * object_point_cloud.GetMaxBound();
@@ -103,6 +104,7 @@ namespace oslam
         auto object_depth = frame.depth_.clone();
         object_depth.setTo(0, ~instance_image.bbox_mask_);
 
+
         if (!isBackground())
         {
             auto difference   = instance_image_.feature_ - instance_image.feature_;
@@ -121,6 +123,11 @@ namespace oslam
         open3d::cuda::RGBDImageCuda object_rgbd_cuda;
         object_rgbd_cuda.Upload(object_depth, color);
 
+        /* open3d::cuda::PointCloudCuda object_point_cloud(open3d::cuda::VertexRaw, frame.width_ * frame.height_); */
+        /* object_point_cloud.Build(object_rgbd_cuda, intrinsic_cuda_); */
+
+        /* auto cpu_pcl = object_point_cloud.Download(); */
+        /* open3d::visualization::DrawGeometries({cpu_pcl}, "Integrating object cloud"); */
         open3d::cuda::TransformCuda camera_to_object_cuda;
         /* Eigen::Matrix4d camera_to_object = pose_.inverse() * camera_pose; */
         camera_to_object_cuda.FromEigen(camera_pose);
@@ -183,7 +190,7 @@ namespace oslam
 
     void TSDFObject::uploadVolumeToGPU()
     {
-        assert(volume_cpu.has_value());
+        assert(volume_cpu_.has_value());
         if (volume_.device_)
         {
             spdlog::warn("Object already on GPU, not uploading");
@@ -210,62 +217,21 @@ namespace oslam
 
     Eigen::Vector3d TSDFObject::getMinBound()
     {
-        Eigen::Vector3d result;
         if (volume_.device_ != nullptr)
         {
-            result = volume_.GetMinBound();
+            object_min_pt_ = volume_.GetMinBound();
+            return object_min_pt_;
         }
-        else
-        {
-            auto keys   = volume_cpu_->first;
-            int max_int = std::numeric_limits<int>::max();
-            cuda::Vector3i min_bound(max_int, max_int, max_int);
-
-            for (auto &key : keys)
-            {
-                for (int d = 0; d < 3; ++d)
-                {
-                    min_bound(d) = std::min(key(d), min_bound(d));
-                }
-            }
-
-            cuda::Vector3f min_boundf((min_bound(0) * volume_.N_ + 0.5f) * volume_.voxel_length_,
-                                      (min_bound(1) * volume_.N_ + 0.5f) * volume_.voxel_length_,
-                                      (min_bound(2) * volume_.N_ + 0.5f) * volume_.voxel_length_);
-            cuda::Vector3f min_boundw = volume_.transform_volume_to_world_ * min_boundf;
-
-            result = Eigen::Vector3d(min_boundw(0), min_boundw(1), min_boundw(2));
-        }
-        return result;
+        return object_min_pt_;
     }
 
     Eigen::Vector3d TSDFObject::getMaxBound()
     {
-        Eigen::Vector3d result;
         if (volume_.device_ != nullptr)
         {
-            result = volume_.GetMaxBound();
+            object_max_pt_ = volume_.GetMaxBound();
+            return object_max_pt_;
         }
-        else
-        {
-            auto keys   = volume_cpu_->first;
-            int min_int = std::numeric_limits<int>::min();
-            cuda::Vector3i max_bound(min_int, min_int, min_int);
-
-            for (auto &key : keys)
-            {
-                for (int d = 0; d < 3; ++d)
-                {
-                    max_bound(d) = std::max(key(d), max_bound(d));
-                }
-            }
-            cuda::Vector3f max_boundf((max_bound(0) * volume_.N_ + volume_.N_ + 0.5f) * volume_.voxel_length_,
-                                      (max_bound(1) * volume_.N_ + volume_.N_ + 0.5f) * volume_.voxel_length_,
-                                      (max_bound(2) * volume_.N_ + volume_.N_ + 0.5f) * volume_.voxel_length_);
-            cuda::Vector3f max_boundw = volume_.transform_volume_to_world_ * max_boundf;
-
-            result = Eigen::Vector3d(max_boundw(0), max_boundw(1), max_boundw(2));
-        }
-        return result;
+        return object_max_pt_;
     }
 }  // namespace oslam

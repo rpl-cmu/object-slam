@@ -19,10 +19,15 @@
 
 namespace oslam
 {
-    DataReader::DataReader(const std::string &root_dir) : root_dir_(root_dir) { spdlog::debug("CONSTRUCT: DataReader"); }
+    DataReader::DataReader(std::string root_dir, DatasetType dataset_type)
+        : dataset_type_(dataset_type), root_dir_(std::move(root_dir))
+    {
+        spdlog::trace("CONSTRUCT: DataReader");
+    }
 
     bool DataReader::run()
     {
+        spdlog::trace("Entered DataReader::run()");
         if (!shutdown_ && !dataset_parsed_)
         {
             dataset_parsed_ = parseDataset();
@@ -63,14 +68,21 @@ namespace oslam
             spdlog::error("Could not find camera intrinsics");
             return false;
         }
+
+        spdlog::info("Found camera intrinsics");
         if (!fs::exists(color_files_path) || !fs::exists(depth_files_path) || !fs::is_directory(color_files_path) ||
             !fs::is_directory(depth_files_path))
         {
-            spdlog::error("Could not find color and depth images at path \n or path {}\n {}\n is not a directory",
-                          color_files_path,
-                          depth_files_path);
-            return false;
+            color_files_path = root_dir_ / "rgb";
+            if (!fs::exists(color_files_path) || !fs::is_directory(color_files_path))
+            {
+                spdlog::error("Could not find color and depth images at path \n or path {}\n {}\n is not a directory",
+                              color_files_path.string(),
+                              depth_files_path.string());
+                return false;
+            }
         }
+        spdlog::info("Found files in the color and depth folder");
 
         if (!fs::exists(mask_files_path) || !fs::is_directory(mask_files_path))
         {
@@ -85,7 +97,7 @@ namespace oslam
         sort(rgb_files_.begin(), rgb_files_.end());
         sort(depth_files_.begin(), depth_files_.end());
 
-        if(mask_files_exist)
+        if (mask_files_exist)
         {
             for (auto &file : fs::directory_iterator(mask_files_path))
             {
@@ -99,7 +111,7 @@ namespace oslam
                 }
                 else
                 {
-                    spdlog::error("Groundtruth segmentation has incorrect extension", file.path());
+                    spdlog::error("Groundtruth segmentation has incorrect extension", file.path().string());
                     return false;
                 }
             }
@@ -137,7 +149,10 @@ namespace oslam
 
         cv::Mat color = cv::imread(rgb_files_.at(curr_idx_).string(), cv::IMREAD_COLOR);
         cv::Mat depth = cv::imread(depth_files_.at(curr_idx_).string(), cv::IMREAD_ANYDEPTH);
-
+        if (dataset_type_ == DatasetType::TUM)
+        {
+            depth = depth / 5;
+        }
         // TODO:(Akash) Read ground truth pose from file conditionally based on input parameter
         /* cv::Mat gt_mask = cv::imread(mask_files_.at(curr_idx_).string()); */
         /* p_data->gt_pose = Eigen::Matrix4d::Identity(); */

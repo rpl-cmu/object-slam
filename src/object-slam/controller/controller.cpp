@@ -18,9 +18,8 @@
 
 namespace oslam
 {
-    Controller::Controller(std::string dataset_path)
-        : dataset_path_(std::move(dataset_path)),
-          transport_input_queue_("TransportFrameQueue"),
+    Controller::Controller(std::string dataset_path, DatasetType dataset_type)
+        : transport_input_queue_("TransportFrameQueue"),
           transport_output_queue_("MaskedImageQueue"),
           tracker_output_queue_("TrackerOutputQueue"),
           renderer_input_queue_("RendererInputQueue")
@@ -32,7 +31,7 @@ namespace oslam
         CheckCuda(cudaSetDevice(0));
 
         map_             = std::make_shared<oslam::Map>();
-        data_reader_     = std::make_shared<oslam::DataReader>(dataset_path_);
+        data_reader_     = std::make_shared<oslam::DataReader>(std::move(dataset_path), std::move(dataset_type));
         image_transport_ = std::make_shared<oslam::ImageTransporter>(&transport_input_queue_, &transport_output_queue_);
         tracker_         = std::make_shared<oslam::Tracker>(&tracker_output_queue_);
         renderer_        = std::make_shared<oslam::Renderer>(map_, &renderer_input_queue_);
@@ -121,7 +120,7 @@ namespace oslam
                 )
               )
         {
-            spdlog::debug("\n"
+            spdlog::trace("\n"
                 "shutdown_                           : {}\n"
                 "image_transport_ working            : {}\n"
                 "transport_input_queue_ shutdown     : {}\n"
@@ -147,7 +146,7 @@ namespace oslam
             std::chrono::milliseconds sleep_duration{ half_s };
             std::this_thread::sleep_for(sleep_duration);
         }
-            spdlog::debug("\n"
+            spdlog::trace("\n"
                 "shutdown_                           : {}\n"
                 "image_transport_ working            : {}\n"
                 "transport_input_queue_ shutdown     : {}\n"

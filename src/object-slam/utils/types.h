@@ -26,6 +26,14 @@ namespace oslam
     using Feature = cv::Vec<float, 1024>;
 
     using PoseTrajectory = std::vector<Eigen::Matrix4d, Eigen::aligned_allocator<Eigen::Matrix4d>>;
+
+    enum DatasetType
+    {
+        INVALID     = 0,
+        TUM         = 1,
+        RGBD_SCENES = 2
+    };
+
     //! Hashable object id struct
     struct ObjectId
     {

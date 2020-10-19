@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "object-slam/utils/types.h"
 #include "object-slam/struct/frame.h"
 
 namespace oslam
@@ -36,10 +37,11 @@ namespace oslam
         OSLAM_POINTER_TYPEDEFS(DataReader);
         OSLAM_DELETE_COPY_CONSTRUCTORS(DataReader);
 
+
         using FrameCallback    = std::function<void(Frame::Ptr)>;
         using ShutdownCallback = std::function<void(Timestamp)>;
 
-        explicit DataReader(const std::string &root_dir);
+        explicit DataReader(std::string root_dir, DatasetType dataset_type = DatasetType::RGBD_SCENES);
         virtual ~DataReader() = default;
 
         //! \brief Runs through the dataset folder to read all files
@@ -63,6 +65,7 @@ namespace oslam
         bool readFrame();
 
         constexpr static int KEYFRAME_LENGTH = 10;
+        DatasetType dataset_type_             = DatasetType::INVALID;
         fs::path root_dir_;                  //!< Root directory of the dataset folder
         std::size_t size_          = 0;      //!< Number of images color/depth in the dataset folder
         Timestamp curr_idx_        = 0;      //!< Current index of files being read

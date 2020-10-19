@@ -34,7 +34,6 @@ namespace oslam
         const Frame& frame                      = renderer_payload.frame_;
         const Eigen::Matrix3d& intrinsic_matrix = frame.intrinsic_.intrinsic_matrix_ * 4.0;
         const InstanceImage& bg_instance        = renderer_payload.bg_instance_;
-        Renders all_renders                     = renderer_payload.object_renders_;
 
         spdlog::info("Filling camera trajectory");
         std::vector<cv::Affine3d> camera_trajectory_3d = fillCameraTrajectory(map_->getCameraTrajectory());
@@ -55,8 +54,8 @@ namespace oslam
 
             cv::imshow("Background render", color_map);
 
+            Renders all_renders = map_->renderObjects(frame, map_->getCameraPose(curr_timestamp_));
             all_renders.emplace_back(map_->getBackgroundId(), Render(color_map, vertex_map, normal_map));
-            /* all_renders.emplace_back(map_->getBackgroundId(), background_render); */
 
             std::vector<cv::Mat> depth_array;
             std::vector<cv::Mat> color_array;
@@ -167,7 +166,7 @@ namespace oslam
     {
         //! TODO: Limit trajectory length
         return std::make_shared<cv::viz::WTrajectory>(
-            camera_trajectory_3d, cv::viz::WTrajectory::PATH, 1.0, cv::viz::Color::red());
+            camera_trajectory_3d, cv::viz::WTrajectory::PATH, 1.0, cv::viz::Color::green());
     }
 
     WidgetPtr Renderer::render3dFrustumTraj(const std::vector<cv::Affine3d>& camera_trajectory_3d,
@@ -185,7 +184,7 @@ namespace oslam
             trajectory_frustums.push_back(*it);
             count++;
         }
-        return std::make_unique<cv::viz::WTrajectoryFrustums>(trajectory_frustums, K, 0.2, cv::viz::Color::green());
+        return std::make_unique<cv::viz::WTrajectoryFrustums>(trajectory_frustums, K, 0.2, cv::viz::Color::red());
     }
 
     WidgetPtr Renderer::render3dFrustumWithColorMap(const std::vector<cv::Affine3d>& camera_trajectory_3d,
@@ -195,7 +194,7 @@ namespace oslam
         cv::Matx33d K;
         cv::eigen2cv(intrinsic_matrix, K);
         std::unique_ptr<cv::viz::WCameraPosition> frustum_widget =
-            std::make_unique<cv::viz::WCameraPosition>(K, color_map, 0.4, cv::viz::Color::green());
+            std::make_unique<cv::viz::WCameraPosition>(K, color_map, 0.4, cv::viz::Color::red());
         frustum_widget->setPose(camera_trajectory_3d.back());
         return frustum_widget;
     }
