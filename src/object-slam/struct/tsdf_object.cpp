@@ -44,15 +44,20 @@ namespace oslam
         object_depth.setTo(0, ~instance_image_.bbox_mask_);
 
         // Construct Object RGBD to obtain center and estimate object size
-        open3d::cuda::RGBDImageCuda object_rgbd;
+        open3d::cuda::RGBDImageCuda object_rgbd(frame.max_depth_, frame.depth_factor_);
         object_rgbd.Upload(object_depth, color);
-        open3d::cuda::PointCloudCuda object_point_cloud(open3d::cuda::VertexRaw, frame.width_ * frame.height_);
+        open3d::cuda::PointCloudCuda object_point_cloud(open3d::cuda::VertexWithColor, frame.width_ * frame.height_);
         object_point_cloud.Build(object_rgbd, intrinsic_cuda_);
         // Move object point cloud to F_{W}
         object_point_cloud.Transform(camera_pose);
 
+        /* auto cpu_pcl = object_point_cloud.Download(); */
+
+        /* open3d::visualization::DrawGeometries({cpu_pcl}, "Point cloud"); */
+
         object_max_pt_ = Eigen::Affine3d(pose_) * object_point_cloud.GetMaxBound();
         object_min_pt_ = Eigen::Affine3d(pose_) * object_point_cloud.GetMinBound();
+
         // Translate the object pose to point cloud center
         // T_wo = T_wc * T_co
         Eigen::Matrix4d T_camera_to_object   = Eigen::Matrix4d::Identity();
@@ -120,7 +125,7 @@ namespace oslam
         /* auto match_score = xt::norm_l1(difference); */
 
         /* spdlog::info("Matching score between object: {}", match_score); */
-        open3d::cuda::RGBDImageCuda object_rgbd_cuda;
+        open3d::cuda::RGBDImageCuda object_rgbd_cuda(frame.max_depth_, frame.depth_factor_);
         object_rgbd_cuda.Upload(object_depth, color);
 
         /* open3d::cuda::PointCloudCuda object_point_cloud(open3d::cuda::VertexRaw, frame.width_ * frame.height_); */
@@ -180,12 +185,13 @@ namespace oslam
 
     void TSDFObject::downloadVolumeToCPU()
     {
-        assert(volume_cpu_.has_value() && !volume_.device_);
-        if (volume_.device_)
+        if(!volume_cpu_.has_value())
         {
             volume_cpu_ = std::make_optional(volume_.DownloadVolumes());
             volume_.Release();
+            return;
         }
+        spdlog::trace("{} already downloaded to CPU", id_);
     }
 
     void TSDFObject::uploadVolumeToGPU()
@@ -200,6 +206,8 @@ namespace oslam
         auto volumes = volume_cpu_->second;
 
         spdlog::info("Length of keys: {}, length of volumes: {}", keys.size(), volumes.size());
+        if(keys.size() <= 0 || volumes.size() <= 0)
+            return;
         cuda::TransformCuda object_pose_cuda;
         object_pose_cuda.FromEigen(pose_);
 

@@ -84,20 +84,22 @@ namespace oslam
     Tracker::OutputUniquePtr Tracker::runOnce(Tracker::InputUniquePtr input)
     {
         using namespace open3d;
-        auto frame           = input->frame_;
-        auto model_color_map = input->model_color_map_;
-        auto model_vertices  = input->model_vertices_;
-        auto model_normals   = input->model_normals_;
+        const auto& frame           = input->frame_;
+        const auto& model_color_map = input->model_color_map_;
+        const auto& model_vertices  = input->model_vertices_;
+        const auto& model_normals   = input->model_normals_;
 
-        frame_raw_depth_cuda_.Upload(frame.depth_);
-        frame_color_cuda_.Upload(frame.color_);
+        cuda::ImageCuda<ushort, 1> frame_raw_depth_cuda;
+        cuda::ImageCuda<uchar, 3> frame_color_cuda;
 
-        cuda::RGBDImageCuda frame_rgbd;
-        frame_rgbd.Build(frame_raw_depth_cuda_, frame_color_cuda_);
+        frame_raw_depth_cuda.Upload(frame.depth_);
+        frame_color_cuda.Upload(frame.color_);
+
+        cuda::RGBDImageCuda frame_rgbd(frame.max_depth_, frame.depth_factor_);
+        frame_rgbd.Build(frame_raw_depth_cuda, frame_color_cuda);
 
         TrackerStatus tracker_status         = TrackerStatus::INVALID;
         Eigen::Matrix4d relative_camera_pose = Eigen::Matrix4d::Identity();
-        Eigen::Matrix6d information_matrix   = Eigen::Matrix6d::Identity();
         Eigen::Matrix4d camera_pose;
 
         if (curr_timestamp_ == 1)
@@ -135,7 +137,7 @@ namespace oslam
                 tracker_status = TrackerStatus::VALID;
             }
 
-            information_matrix   = odometry.ComputeInformationMatrix();
+            //! Not used
             auto odo_finish_time = Timer::toc(odo_start_time).count();
             spdlog::debug("Odometry took {} ms", odo_finish_time);
             camera_pose = prev_camera_pose * relative_camera_pose;
@@ -145,7 +147,7 @@ namespace oslam
         prev_camera_pose = camera_pose;
 
         return std::make_unique<TrackerOutput>(
-            curr_timestamp_, tracker_status, frame, relative_camera_pose, information_matrix);
+            curr_timestamp_, tracker_status, frame, relative_camera_pose);
     }
 
     void Tracker::shutdownQueues()

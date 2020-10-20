@@ -33,7 +33,7 @@ int main(int argc, char* argv[])
 #ifndef NDEBUG
             spdlog::set_level(spdlog::level::trace);
 #else
-            spdlog::set_level(spdlog::level::debug);
+            spdlog::set_level(spdlog::level::info);
 #endif
         },
         "Print debug logs");

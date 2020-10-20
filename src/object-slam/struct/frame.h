@@ -35,14 +35,18 @@ namespace oslam
                        const cv::Mat& color,
                        const cv::Mat& depth,
                        const camera::PinholeCameraIntrinsic& intrinsic,
-                       bool is_keyframe = false)
+                       bool is_keyframe   = false,
+                       float depth_factor = 1000.0f,
+                       float max_depth    = 3.0f)
             : PipelinePayload(timestamp),
               width_(color.cols),
               height_(color.rows),
               color_(color),
               depth_(depth),
               intrinsic_(intrinsic),
-              is_keyframe_(is_keyframe){};
+              is_keyframe_(is_keyframe),
+              depth_factor_(depth_factor),
+              max_depth_(max_depth){};
 
         ~Frame() override = default;
 
@@ -54,21 +58,27 @@ namespace oslam
               color_(frame.color_),
               depth_(frame.depth_),
               intrinsic_(frame.intrinsic_),
-              is_keyframe_(frame.is_keyframe_){};
+              is_keyframe_(frame.is_keyframe_),
+              depth_factor_(frame.depth_factor_),
+              max_depth_(frame.max_depth_){};
 
        public:
         //! Frame size
         const int width_  = -1;
         const int height_ = -1;
+
+
         //! Color and depth images
         const cv::Mat color_;
         const cv::Mat depth_;
         const camera::PinholeCameraIntrinsic intrinsic_;
-        const bool is_keyframe_ = { false };                 //!< Does frame have instance segmentation
+        const bool is_keyframe_ = { false };                  //!< False if frame doesn't have segmentation
+        const float depth_factor_ = 1000.0f;
+        const float max_depth_    = 3.0f;
         Eigen::Matrix4d pose_ = Eigen::Matrix4d::Identity();  //!< Pose of the frame to current local submap TODO: Required?
     };
 
-    //!TODO: Possibly add a new file for this struct
+    //! TODO: Possibly add a new file for this struct
     struct Render
     {
        public:

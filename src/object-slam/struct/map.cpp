@@ -86,6 +86,7 @@ namespace oslam
     {
         std::scoped_lock<std::mutex> lock_integrate_object(mutex_);
         TSDFObject::Ptr& object = id_to_object_.at(id);
+        assert(isObjectInFrustum(object, camera_pose));
         object->integrate(frame, instance_image, camera_pose);
     }
 
@@ -209,7 +210,7 @@ namespace oslam
             double existence_expect = object->getExistExpectation();
             spdlog::debug("{} -> Existence expectation: {}", id, existence_expect);
 
-            if (existence_expect <= 0.1)
+            if (existence_expect <= 0.2)
             {
                 to_delete_objects.push_back(id);
                 to_delete_object_keys.push_back(object->hash(id));

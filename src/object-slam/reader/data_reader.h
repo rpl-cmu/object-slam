@@ -62,6 +62,8 @@ namespace oslam
 
        private:
         bool parseDataset();
+        bool parseRgbdScenes();
+        bool parseTum();
         bool readFrame();
 
         constexpr static int KEYFRAME_LENGTH = 10;

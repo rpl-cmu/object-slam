@@ -70,8 +70,6 @@ namespace oslam
         Eigen::Matrix4d prev_camera_pose;  //!< T_camera_to_world_ at prev timestep
 
         cuda::PinholeCameraIntrinsicCuda intrinsic_cuda_;
-        cuda::ImageCuda<ushort, 1> frame_raw_depth_cuda_;
-        cuda::ImageCuda<uchar, 3> frame_color_cuda_;
     };
 }  // namespace oslam
 

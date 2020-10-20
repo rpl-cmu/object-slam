@@ -78,13 +78,11 @@ namespace oslam
         TrackerOutput(const Timestamp timestamp,
                       const TrackerStatus& tracker_status,
                       const Frame& frame,
-                      const Eigen::Matrix4d& relative_camera_pose,
-                      const Eigen::Matrix6d& information_matrix)
+                      const Eigen::Matrix4d& relative_camera_pose)
             : PipelinePayload(timestamp),
               tracker_status_(tracker_status),
               frame_(frame),
-              relative_camera_pose_(relative_camera_pose),
-              information_matrix_(information_matrix)
+              relative_camera_pose_(relative_camera_pose)
         {
         }
         ~TrackerOutput() = default;
@@ -93,7 +91,6 @@ namespace oslam
         const TrackerStatus tracker_status_;
         const Frame frame_;
         const Eigen::Matrix4d relative_camera_pose_;
-        const Eigen::Matrix6d information_matrix_;
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_TRACKER_PAYLOAD_H */

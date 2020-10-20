@@ -63,8 +63,7 @@ namespace oslam
                                                          mapper_payload->tracker_status_,
                                                          mapper_payload->frame_,
                                                          prev_transport_output_->instance_images_,
-                                                         mapper_payload->relative_camera_pose_,
-                                                         mapper_payload->information_matrix_);
+                                                         mapper_payload->relative_camera_pose_);
         }
         else
         {
@@ -86,8 +85,8 @@ namespace oslam
                                                          mapper_payload->tracker_status_,
                                                          mapper_payload->frame_,
                                                          transport_output->instance_images_,
-                                                         mapper_payload->relative_camera_pose_,
-                                                         mapper_payload->information_matrix_);
+                                                         mapper_payload->relative_camera_pose_
+                                                         );
 
             prev_transport_output_ = std::move(transport_output);
             keyframe_timestamps_.push_back(curr_timestamp_);
@@ -295,9 +294,8 @@ namespace oslam
             cuda::ImageCuda<uchar, 1> src_mask;
             src_mask.Upload(instance_image.maskb_);
 
-            //! Scale the depth image by depth factor = 1000 and convert to float image
             cv::Mat depthf;
-            cv::rgbd::rescaleDepth(frame.depth_, CV_32F, depthf);
+            cv::rgbd::rescaleDepth(frame.depth_, CV_32FC1, depthf, frame.depth_factor_);
             cuda::ImageCuda<float, 1> depth;
             depth.Upload(depthf);
 
@@ -319,15 +317,15 @@ namespace oslam
     InstanceImage Mapper::createBgInstanceImage(const Frame& frame, const Renders& object_renders, const InstanceImages& instance_images) const
     {
         cv::Mat bg_mask = cv::Mat::zeros(frame.height_, frame.width_, CV_8UC1);
-        for(const auto& render_pair : object_renders)
-        {
-            const Render& object_render = render_pair.second;
-            cv::Mat gray;
-            cv::cvtColor(object_render.color_map_, gray, cv::COLOR_BGR2GRAY);
-            cv::Mat mask;
-            cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY);
-            cv::bitwise_or(bg_mask, mask, bg_mask);
-        }
+        /* for(const auto& render_pair : object_renders) */
+        /* { */
+        /*     const Render& object_render = render_pair.second; */
+        /*     cv::Mat gray; */
+        /*     cv::cvtColor(object_render.color_map_, gray, cv::COLOR_BGR2GRAY); */
+        /*     cv::Mat mask; */
+        /*     cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY); */
+        /*     cv::bitwise_or(bg_mask, mask, bg_mask); */
+        /* } */
         for(const auto& instance_image : instance_images)
         {
             cv::bitwise_or(bg_mask, instance_image.maskb_, bg_mask);

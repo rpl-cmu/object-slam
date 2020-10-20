@@ -10,9 +10,9 @@
 
 #include "object-slam/utils/pipeline_payload.h"
 
+#include "object-slam/payload/tracker_payload.h"
 #include "object-slam/struct/frame.h"
 #include "object-slam/struct/instance_image.h"
-#include "object-slam/payload/tracker_payload.h"
 
 namespace oslam
 {
@@ -22,21 +22,18 @@ namespace oslam
         OSLAM_POINTER_TYPEDEFS(MapperInput);
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-        MapperInput(
-            const Timestamp timestamp,
-            const Timestamp prev_maskframe_timestamp,
-            const TrackerStatus& tracker_status,
-            const Frame& frame,
-            const InstanceImages& instance_images,
-            const Eigen::Matrix4d& relative_camera_pose,
-            const Eigen::Matrix6d& information_matrix)
+        MapperInput(const Timestamp timestamp,
+                    const Timestamp prev_maskframe_timestamp,
+                    const TrackerStatus& tracker_status,
+                    const Frame& frame,
+                    const InstanceImages& instance_images,
+                    const Eigen::Matrix4d& relative_camera_pose)
             : PipelinePayload(timestamp),
               prev_maskframe_timestamp_(prev_maskframe_timestamp),
               tracker_status_(tracker_status),
               frame_(frame),
               instance_images_(instance_images),
-              relative_camera_pose_(relative_camera_pose),
-              information_matrix_(information_matrix)
+              relative_camera_pose_(relative_camera_pose)
         {
         }
 
@@ -46,7 +43,6 @@ namespace oslam
         const Frame frame_;
         const InstanceImages instance_images_;
         const Eigen::Matrix4d relative_camera_pose_;
-        const Eigen::Matrix6d information_matrix_;
     };
 }  // namespace oslam
 #endif /* ifndef OSLAM_MAPPER_PAYLOAD_H */
