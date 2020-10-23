@@ -57,8 +57,8 @@ namespace oslam
 
        private:
         constexpr static double SCORE_THRESHOLD           = 0.6;
-        constexpr static float IOU_OVERLAP_THRESHOLD      = 0.2F;
-        constexpr static float HIGH_IOU_OVERLAP_THRESHOLD = 0.4F;
+        constexpr static double IOU_OVERLAP_THRESHOLD      = 0.2;
+        constexpr static float HIGH_IOU_OVERLAP_THRESHOLD = 0.3F;
         constexpr static int MASK_AREA_THRESHOLD          = 2500;
         constexpr static int BACKGROUND_RESOLUTION        = 256;
         constexpr static int OBJECT_RESOLUTION            = 128;

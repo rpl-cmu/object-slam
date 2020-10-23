@@ -58,7 +58,7 @@ namespace oslam
         Mapper::InputUniquePtr mapper_input;
 
         ObjectRenders::UniquePtr object_renders;
-        if(curr_timestamp_ == 1)
+        if (curr_timestamp_ == 1)
         {
             object_renders = std::make_unique<ObjectRenders>(curr_timestamp_, Renders({}));
         }
@@ -286,6 +286,7 @@ namespace oslam
                                        const InstanceImages& instance_images,
                                        InstanceImages& projected_instance_images)
     {
+        spdlog::trace("Mapper::projectInstanceImages()");
         auto T_keyframe_to_world             = map_->getCameraPose(keyframe_timestamp);
         auto T_camera_to_world               = map_->getCameraPose(curr_timestamp_);
         Eigen::Matrix4d T_keyframe_to_camera = T_camera_to_world.inverse() * T_keyframe_to_world;
@@ -296,11 +297,7 @@ namespace oslam
         projected_instance_images.reserve(instance_images.size());
         for (const auto& instance_image : instance_images)
         {
-            //! Skip for background object
-            if (instance_image.label_ == 0)
-            {
-                continue;
-            }
+            spdlog::debug("Projecting instance image with label: {}, score: {}", instance_image.label_, instance_image.score_);
             //! Project the mask from maskframe to current frame
             cuda::ImageCuda<uchar, 1> src_mask;
             src_mask.Upload(instance_image.maskb_);
@@ -314,13 +311,10 @@ namespace oslam
             auto proj_mask_cuda =
                 cuda::SegmentationCuda::TransformAndProject(src_mask, depth, T_keyframe_to_camera_cuda, intrinsic_cuda);
             cv::Mat proj_mask = proj_mask_cuda.DownloadMat();
-
-            cv::Mat mask_flood = proj_mask.clone();
-            cv::floodFill(mask_flood, cv::Point(0, 0), cv::Scalar(255));
-            proj_mask = (proj_mask | ~mask_flood);
-
             BoundingBox proj_bbox;
-            transform_project_bbox(instance_image.bbox_, proj_bbox, depthf, frame.intrinsic_, T_keyframe_to_camera);
+            //! Do not use mask if it is too close to border
+            if(!transform_project_bbox(instance_image.bbox_, proj_bbox, depthf, frame.intrinsic_, T_keyframe_to_camera))
+                continue;
             projected_instance_images.emplace_back(
                 proj_mask, proj_bbox, instance_image.label_, instance_image.score_, instance_image.feature_);
         }
@@ -344,11 +338,10 @@ namespace oslam
         {
             cv::bitwise_or(bg_mask, instance_image.maskb_, bg_mask);
         }
-        bg_mask = ~bg_mask;
+
         cv::Mat im_floodfill = bg_mask.clone();
         cv::floodFill(im_floodfill, cv::Point(0, 0), cv::Scalar(255));
-
-        bg_mask                  = ~(bg_mask | ~im_floodfill);
+        bg_mask = ~(bg_mask | ~im_floodfill);
         return InstanceImage(bg_mask, BoundingBox({ 0, 0, frame.width_, frame.height_ }), 0, 1);
     }
 
@@ -383,11 +376,12 @@ namespace oslam
                 if (curr_timestamp_ == keyframe_timestamps_.back())
                 {
                     Eigen::Matrix4d T_object_to_camera = camera_pose.inverse() * map_->getObjectPose(id);
-
                     addObjectCameraBetweenFactor(map_->getObjectHash(id), curr_timestamp_, T_object_to_camera);
                 }
             }
         }
+        for(auto match: frame_instance_matches)
+            spdlog::debug("Match: {}", match);
         return frame_instance_matches;
     }
 
@@ -501,19 +495,9 @@ namespace oslam
         cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY);
 
         auto iter = instance_images.begin();
-        std::vector<double> geometric_quality;
-        std::vector<double> semantic_quality;
+        std::vector<std::tuple<double, double, size_t>> quality;
         for (; iter != instance_images.end(); ++iter)
         {
-            if (iter->score_ < SCORE_THRESHOLD)
-            {
-                spdlog::debug("InstanceImage {} with score {} is below score threshold. Not matched with {}",
-                              iter->label_,
-                              iter->score_,
-                              id);
-                continue;
-            }
-
             cv::Mat intersection_mask, union_mask;
             cv::bitwise_and(iter->maskb_, mask, intersection_mask);
             cv::bitwise_or(iter->maskb_, mask, union_mask);
@@ -522,66 +506,76 @@ namespace oslam
             int intersection_val = cv::countNonZero(intersection_mask);
 
             //! Object did not get rendered, nor was there a detection
-            if (union_val < 10)
-                continue;
-            auto quality          = static_cast<float>(intersection_val) / static_cast<float>(union_val);
-            double matching_score = map_->computeObjectMatch(id, iter->feature_);
-
-            if (matching_score >= 300.0 && quality < HIGH_IOU_OVERLAP_THRESHOLD)
-                continue;
-            size_t curr_idx = size_t(iter - instance_images.begin());
-            spdlog::debug(
-                "{} -> Quality of the association: {}, {} Target label: {}", id, quality, matching_score, iter->label_);
-            if (!instance_matches.at(curr_idx) && quality > IOU_OVERLAP_THRESHOLD && union_val > MASK_AREA_THRESHOLD)
+            double geometric_quality = static_cast<double>(intersection_val) / static_cast<double>(union_val);
+            if (union_val == 0)
+                geometric_quality = 0.0;
+            quality.emplace_back(geometric_quality, map_->computeObjectMatch(id, iter->feature_), iter-instance_images.begin());
+        }
+        std::sort(quality.begin(), quality.end(), [](decltype(quality)::value_type val1, decltype(quality)::value_type val2) {
+            return std::get<1>(val1) < std::get<1>(val2);
+        });
+        spdlog::debug("Matching objectID: {}", id);
+        for(auto qual : quality)
+        {
+            auto geometric_qual = std::get<0>(qual);
+            auto semantic_qual = std::get<1>(qual);
+            auto idx = std::get<2>(qual);
+            spdlog::debug("{}, {}, {}", geometric_qual, semantic_qual, idx);
+            if(!instance_matches.at(idx) && geometric_qual > IOU_OVERLAP_THRESHOLD)
             {
-                instance_matches.at(curr_idx) = true;
-                return iter;
+                instance_matches.at(idx) = true;
+                return instance_images.begin() + idx;
             }
         }
         return instance_images.end();
     }
 
-    inline void Mapper::addPriorFactor(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose)
-    {
-        auto camera_key = gtsam::Symbol('c', timestamp);
-        // Prior noise of 0.01 metres (x,y,z) and 0.01 rad in (alpha, beta, gamma)
-        auto prior_noise = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector6::Constant(0.01));
-        pose_graph_.emplace_shared<gtsam::PriorFactor<gtsam::Pose3>>(camera_key, gtsam::Pose3(camera_pose), prior_noise);
-    }
+inline void Mapper::addPriorFactor(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose)
+{
+    spdlog::trace("Mapper::addPriorFactor");
+    auto camera_key = gtsam::Symbol('c', timestamp);
+    // Prior noise of 0.01 metres (x,y,z) and 0.01 rad in (alpha, beta, gamma)
+    auto prior_noise = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector6::Constant(0.01));
+    pose_graph_.emplace_shared<gtsam::PriorFactor<gtsam::Pose3>>(camera_key, gtsam::Pose3(camera_pose), prior_noise);
+}
 
-    inline void Mapper::addCameraCameraBetweenFactor(const Timestamp& time_source_camera,
-                                                     const Timestamp& time_target_camera,
-                                                     const Eigen::Matrix4d& T_source_camera_to_target_camera)
-    {
-        auto source_camera_key = gtsam::Symbol('c', time_source_camera);
-        auto target_camera_key = gtsam::Symbol('c', time_target_camera);
+inline void Mapper::addCameraCameraBetweenFactor(const Timestamp& time_source_camera,
+                                                 const Timestamp& time_target_camera,
+                                                 const Eigen::Matrix4d& T_source_camera_to_target_camera)
+{
+    spdlog::trace("Mapper::addCameraCameraBetweenFactor");
+    auto source_camera_key = gtsam::Symbol('c', time_source_camera);
+    auto target_camera_key = gtsam::Symbol('c', time_target_camera);
 
-        //! TODO: Obtain noise from ICP
-        auto between_noise = gtsam::noiseModel::Diagonal::Variances(gtsam::Vector6::Constant(1e-3));
-        pose_graph_.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(
-            target_camera_key, source_camera_key, gtsam::Pose3(T_source_camera_to_target_camera), between_noise);
-    }
+    //! TODO: Obtain noise from ICP
+    auto between_noise = gtsam::noiseModel::Diagonal::Variances(gtsam::Vector6::Constant(1e-3));
+    pose_graph_.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(
+        target_camera_key, source_camera_key, gtsam::Pose3(T_source_camera_to_target_camera), between_noise);
+}
 
-    inline void Mapper::addObjectCameraBetweenFactor(const gtsam::Key& object_key,
-                                                     const Timestamp& camera_timestamp,
-                                                     const Eigen::Matrix4d& T_object_to_camera)
-    {
-        auto camera_key = gtsam::Symbol('c', camera_timestamp);
+inline void Mapper::addObjectCameraBetweenFactor(const gtsam::Key& object_key,
+                                                 const Timestamp& camera_timestamp,
+                                                 const Eigen::Matrix4d& T_object_to_camera)
+{
+    spdlog::trace("Mapper::addObjectCameraBetweenFactor");
+    auto camera_key = gtsam::Symbol('c', camera_timestamp);
 
-        auto between_noise = gtsam::noiseModel::Diagonal::Variances(gtsam::Vector6::Constant(1e-3));
-        pose_graph_.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(
-            camera_key, object_key, gtsam::Pose3(T_object_to_camera), between_noise);
-    }
+    auto between_noise = gtsam::noiseModel::Diagonal::Variances(gtsam::Vector6::Constant(1e-3));
+    pose_graph_.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(
+        camera_key, object_key, gtsam::Pose3(T_object_to_camera), between_noise);
+}
 
-    inline void Mapper::addCameraValue(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose)
-    {
-        //! TODO: Error checking
-        auto camera_key = gtsam::Symbol('c', timestamp);
-        pose_values_.insert(camera_key, gtsam::Pose3(camera_pose));
-    }
+inline void Mapper::addCameraValue(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose)
+{
+    //! TODO: Error checking
+    spdlog::trace("Mapper::addCameraValue");
+    auto camera_key = gtsam::Symbol('c', timestamp);
+    pose_values_.insert(camera_key, gtsam::Pose3(camera_pose));
+}
 
-    inline void Mapper::addObjectValue(const gtsam::Key& object_key, const Eigen::Matrix4d& object_pose)
-    {
-        pose_values_.insert(object_key, gtsam::Pose3(object_pose));
-    }
+inline void Mapper::addObjectValue(const gtsam::Key& object_key, const Eigen::Matrix4d& object_pose)
+{
+    spdlog::trace("Mapper::addObjectValue");
+    pose_values_.insert(object_key, gtsam::Pose3(object_pose));
+}
 }  // namespace oslam

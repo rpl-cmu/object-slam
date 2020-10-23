@@ -113,9 +113,9 @@ namespace oslam
         if (!isBackground())
         {
             auto difference   = instance_image_.feature_ - instance_image.feature_;
-            float match_score = cv::norm(difference, cv::NORM_L1);
+            double match_score = cv::norm(difference, cv::NORM_L1);
 
-            if (match_score < 150)
+            if (match_score < 100.0)
             {
                 instance_image_.feature_ = instance_image.feature_;
                 spdlog::debug("Updated feature map for the object");
