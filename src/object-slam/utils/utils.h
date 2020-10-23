@@ -62,7 +62,7 @@ namespace oslam
         transformed_bbox = bbox;
         if (!is_valid_depth(depth_left_top) || !is_valid_depth(depth_right_bottom))
         {
-            spdlog::warn("Depth at left point: {}, Depth at right point: {}\n", depth_left_top, depth_right_bottom);
+            spdlog::debug("Depth at left point: {}, Depth at right point: {}\n", depth_left_top, depth_right_bottom);
             return false;
         }
         Eigen::Vector3d left_top_3dpoint =

@@ -57,14 +57,15 @@ namespace oslam
        public:
         OSLAM_POINTER_TYPEDEFS(RendererOutput);
 
-        RendererOutput(Timestamp timestamp, Render::UniquePtr background_render)
-            : PipelinePayload(timestamp), background_render_(std::move(background_render))
+        RendererOutput(Timestamp timestamp, Render model_render, Renders object_renders)
+            : PipelinePayload(timestamp), model_render_(model_render), object_renders_(object_renders)
         {
         }
 
         ~RendererOutput() = default;
 
-        Render::UniquePtr background_render_;
+        const Render model_render_;
+        const Renders object_renders_;
         std::map<std::string, WidgetPtr> widgets_map_{};
     };
 

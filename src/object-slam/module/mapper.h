@@ -21,6 +21,7 @@
 
 #include "object-slam/payload/mapper_payload.h"
 #include "object-slam/payload/renderer_payload.h"
+#include "object-slam/utils/thread_safe_queue.h"
 
 namespace oslam
 {
@@ -39,6 +40,7 @@ namespace oslam
         using MISO                 = MISOPipelineModule<MapperInput, RendererInput>;
         using TrackerOutputQueue   = ThreadsafeQueue<TrackerOutput::UniquePtr>;
         using TransportOutputQueue = ThreadsafeQueue<ImageTransportOutput::UniquePtr>;
+        using ObjectRendersQueue   = ThreadsafeQueue<ObjectRenders::UniquePtr>;
 
         Mapper(Map::Ptr map,
                TrackerOutputQueue* tracker_output_queue,
@@ -51,6 +53,7 @@ namespace oslam
 
         virtual bool hasWork() const override { return (curr_timestamp_ < max_timestamp_); }
         virtual void setMaxTimestamp(Timestamp timestamp) { max_timestamp_ = timestamp; }
+        void fillRendersQueue(ObjectRenders::UniquePtr renders) { object_renders_queue_.push(std::move(renders)); }
 
        private:
         constexpr static double SCORE_THRESHOLD           = 0.6;
@@ -97,12 +100,6 @@ namespace oslam
                                             const InstanceImages& instance_images,
                                             const Frame& frame,
                                             const Eigen::Matrix4d& camera_pose);
-        Map::Ptr map_;
-        ObjectId active_bg_id_;
-
-        TrackerOutputQueue* tracker_output_queue_;
-        TransportOutputQueue* transport_output_queue_;
-        ImageTransportOutput::UniquePtr prev_transport_output_;
 
         void addPriorFactor(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose);
         void addCameraCameraBetweenFactor(const Timestamp& time_source_camera,
@@ -115,6 +112,15 @@ namespace oslam
 
         void addCameraValue(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose);
         void addObjectValue(const gtsam::Key& object_key, const Eigen::Matrix4d& object_pose);
+
+
+        Map::Ptr map_;
+        ObjectId active_bg_id_;
+
+        TrackerOutputQueue* tracker_output_queue_;
+        TransportOutputQueue* transport_output_queue_;
+        ObjectRendersQueue object_renders_queue_;
+        ImageTransportOutput::UniquePtr prev_transport_output_;
 
         Timestamp curr_timestamp_ = 0;
         std::vector<Timestamp> keyframe_timestamps_;

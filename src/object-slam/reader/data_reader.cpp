@@ -28,7 +28,7 @@ namespace oslam
 
     bool DataReader::run()
     {
-        spdlog::trace("Entered DataReader::run()");
+        spdlog::trace("DataReader::run()");
         if (!shutdown_ && !dataset_parsed_)
         {
             dataset_parsed_ = parseDataset();
@@ -51,12 +51,14 @@ namespace oslam
 
     bool DataReader::parseDataset()
     {
+        spdlog::trace("DataReader::parseDataset()");
         if (!fs::exists(root_dir_) || !fs::is_directory(root_dir_))
         {
             spdlog::error("Incorrect dataset path");
             return false;
         }
-        if (dataset_type_ == RGBD_SCENES)
+
+        if (dataset_type_ == DatasetType::RGBD_SCENES)
         {
             return parseRgbdScenes();
         }
@@ -69,6 +71,7 @@ namespace oslam
 
     bool DataReader::parseRgbdScenes()
     {
+        spdlog::trace("DataReader::parseRgbdScenes()");
         bool mask_files_exist = true;
 
         fs::path color_files_path = root_dir_ / "color";
@@ -101,6 +104,7 @@ namespace oslam
 
         spdlog::info("Found Color files path : {}", color_files_path.string());
         spdlog::info("Found Depth files path : {}", depth_files_path.string());
+
         copy(fs::directory_iterator(color_files_path), fs::directory_iterator(), std::back_inserter(rgb_files_));
         copy(fs::directory_iterator(depth_files_path), fs::directory_iterator(), std::back_inserter(depth_files_));
         sort(rgb_files_.begin(), rgb_files_.end());
@@ -143,6 +147,7 @@ namespace oslam
 
     bool DataReader::parseTum()
     {
+        spdlog::trace("DataReader::parseTum()");
         fs::path color_files_path      = root_dir_ / "rgb";
         fs::path depth_files_path      = root_dir_ / "depth";
         fs::path associated_files_path = root_dir_ / "files.txt";
@@ -234,6 +239,7 @@ namespace oslam
     }
     bool DataReader::readFrame()
     {
+        spdlog::trace("DataReader::readFrame()");
         if (curr_idx_ >= size_)
         {
             for (const auto &callback : shutdown_callbacks_)
@@ -256,9 +262,6 @@ namespace oslam
             depth_factor = 5000.0f;
             spdlog::trace("Setting depth factor = 5000.0");
         }
-        // TODO:(Akash) Read ground truth pose from file conditionally based on input parameter
-        /* cv::Mat gt_mask = cv::imread(mask_files_.at(curr_idx_).string()); */
-        /* p_data->gt_pose = Eigen::Matrix4d::Identity(); */
 
         // Every 10th frame requires semantic segmentation
         for (const auto &callback : output_callbacks_)
@@ -271,7 +274,7 @@ namespace oslam
 
     void DataReader::shutdown()
     {
-        spdlog::debug("Shutting down DataReader on demand");
+        spdlog::info("Shutting down DataReader on demand");
         shutdown_ = true;
     }
 

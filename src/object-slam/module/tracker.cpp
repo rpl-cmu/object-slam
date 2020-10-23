@@ -35,8 +35,8 @@ namespace oslam
     {
         auto start_time = Timer::tic();
 
-        Frame::UniquePtr input_frame;
-        bool queue_state = frame_queue_.popBlocking(input_frame);
+        Frame::UniquePtr input_frame = nullptr;
+        bool queue_state             = frame_queue_.popBlocking(input_frame);
         if (!input_frame || !queue_state)
         {
             spdlog::error("Module: {} {} returned null", name_id_, frame_queue_.queue_id_);
@@ -65,19 +65,15 @@ namespace oslam
                 spdlog::error("Module: {} {} returned null", name_id_, model_queue_.queue_id_);
                 return nullptr;
             }
-            tracker_input = std::make_unique<TrackerInput>(curr_timestamp_,
-                                                           *input_frame,
-                                                           model->colors_,
-                                                           model->vertices_,
-                                                           model->normals_);
+            tracker_input = std::make_unique<TrackerInput>(
+                curr_timestamp_, *input_frame, model->colors_, model->vertices_, model->normals_);
         }
         if (!tracker_input)
         {
             spdlog::error("Unable to create TrackerInputPayload");
             return nullptr;
         }
-        auto duration = Timer::toc(start_time).count();
-        spdlog::debug("Processed tracker payload: {}, took {} ms", curr_timestamp_, duration);
+        spdlog::info("Processed tracker payload: {}, took {} ms", curr_timestamp_, Timer::toc(start_time).count());
         return tracker_input;
     }
 
@@ -130,24 +126,20 @@ namespace oslam
 
             auto success         = std::get<0>(result);
             relative_camera_pose = std::get<1>(result);
-            spdlog::info("Success: {}, Returned relative camera pose: \n{}\n", success, relative_camera_pose);
 
             if (success)
             {
                 tracker_status = TrackerStatus::VALID;
             }
 
-            //! Not used
-            auto odo_finish_time = Timer::toc(odo_start_time).count();
-            spdlog::debug("Odometry took {} ms", odo_finish_time);
+            spdlog::info("Odometry took {} ms", Timer::toc(odo_start_time).count());
             camera_pose = prev_camera_pose * relative_camera_pose;
         }
 
-        spdlog::debug("Current camera pose: \n{}\n", camera_pose);
+        spdlog::info("Current camera pose: \n{}\n", camera_pose);
         prev_camera_pose = camera_pose;
 
-        return std::make_unique<TrackerOutput>(
-            curr_timestamp_, tracker_status, frame, relative_camera_pose);
+        return std::make_unique<TrackerOutput>(curr_timestamp_, tracker_status, frame, relative_camera_pose);
     }
 
     void Tracker::shutdownQueues()

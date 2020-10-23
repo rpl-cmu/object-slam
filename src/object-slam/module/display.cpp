@@ -20,10 +20,13 @@ namespace oslam
           display_3d_queue_("Display3dQueue"),
           display_input_queue_("DisplayInputQueue")
     {
+        spdlog::trace("Display::Display()");
         cv::startWindowThread();
-
-        // TODO: Enable if debug
+#ifndef NDEBUG
+        window_3d_.setGlobalWarnings(true);
+#else
         window_3d_.setGlobalWarnings(false);
+#endif
         window_3d_.setBackgroundColor(background_color_);
         window_3d_.showWidget("Camera origin", cv::viz::WCameraPosition(0.25));
         window_3d_.setViewerPose(cv::Affine3d::Identity());
@@ -33,6 +36,8 @@ namespace oslam
 
     Display::InputUniquePtr Display::getInputPacket()
     {
+        spdlog::trace("Display::getInputPacket()");
+
         Frame::UniquePtr input_frame;
         bool queue_state = frame_queue_.popBlocking(input_frame);
         if (!input_frame || !queue_state)
@@ -78,15 +83,19 @@ namespace oslam
 
     Display::OutputUniquePtr Display::runOnce(InputUniquePtr input)
     {
+        spdlog::trace("Display::runOnce()");
+        auto start_time = Timer::tic();
         const std::vector<NamedImage>& images_to_display = input->display_images_;
         const WidgetsMap& widgets_map = input->widgets_map_;
         show2dWindow(images_to_display);
         show3dWindow(widgets_map);
+        spdlog::info("Display took {} ms", Timer::toc(start_time).count());
         return nullptr;
     }
 
     void Display::show2dWindow(const std::vector<NamedImage>& images_to_display) const
     {
+        spdlog::trace("Display::show2dWindow()");
         for (const auto& curr_img : images_to_display)
         {
             cv::namedWindow(curr_img.name_);
@@ -96,6 +105,7 @@ namespace oslam
 
     void Display::show3dWindow(const WidgetsMap& widgets_map)
     {
+        spdlog::trace("Display::show3dWindow()");
         if(window_3d_.wasStopped())
         {
             //! TODO: Callback to shutdown entire pipeline!
@@ -111,6 +121,7 @@ namespace oslam
 
     void Display::shutdownQueues()
     {
+        spdlog::trace("Display::shutDownQueues");
         MISOPipelineModule::shutdownQueues();
         frame_queue_.shutdown();
         display_3d_queue_.shutdown();

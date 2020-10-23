@@ -24,7 +24,7 @@ namespace oslam
           tracker_output_queue_("TrackerOutputQueue"),
           renderer_input_queue_("RendererInputQueue")
     {
-        spdlog::debug("CONSTRUCT: Controller");
+        spdlog::trace("CONSTRUCT: Controller");
         spdlog::info("Thread ({}, {}) started", "ControllerThread", std::this_thread::get_id());
 
         //! TODO: Required?
@@ -86,8 +86,7 @@ namespace oslam
                 transport_frame_queue.push(std::make_unique<Frame>(*frame));
             }
         });
-
-        //! DataReader also fills the Tracker Frame Queue
+        //! DataReader also fills the Tracker Frame Queue and Display Frame Queue
         data_reader_->registerOutputCallback(
             [this](Frame::Ptr frame) { tracker_->fillFrameQueue(std::make_unique<Frame>(*frame)); });
         data_reader_->registerOutputCallback(
@@ -95,10 +94,13 @@ namespace oslam
 
         renderer_->registerOutputCallback([this](const RendererOutput::Ptr& render_payload) {
             tracker_->fillModelQueue(std::make_unique<Model>(render_payload->timestamp_,
-                                                             render_payload->background_render_->color_map_,
-                                                             render_payload->background_render_->vertex_map_,
-                                                             render_payload->background_render_->normal_map_));
+                                                             render_payload->model_render_.color_map_,
+                                                             render_payload->model_render_.vertex_map_,
+                                                             render_payload->model_render_.normal_map_));
         });
+        renderer_->registerOutputCallback([this](const RendererOutput::Ptr& render_payload) {
+                mapper_->fillRendersQueue(std::make_unique<ObjectRenders>(render_payload->timestamp_, render_payload->object_renders_));
+                });
 
         renderer_->registerOutputCallback([this](const RendererOutput::Ptr& render_payload) {
             std::vector<NamedImage> display_img;

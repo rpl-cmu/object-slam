@@ -8,6 +8,8 @@
 
 #ifndef NDEBUG
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
+#define SPDLOG_DEBUG_ON
+#define SPDLOG_TRACE_ON
 #endif
 
 #include <spdlog/spdlog.h>
@@ -20,13 +22,12 @@
 int main(int argc, char* argv[])
 {
     CLI::App app{ "Object SLAM" };
-    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [func: %! line: %#] %^[%L]  %v%$");
-
+    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [thread: %t] %^[%L]  %v%$");
     std::string dataset_path;
     app.add_option("dataset_path", dataset_path, "Path to the dataset")->required();
 
     int type;
-    app.add_set("--dataset_type", type, {0, 1}, "Dataset type: 0 -> RGBD_SCENES, 1 -> TUM")->required();
+    app.add_set("--dataset_type", type, {1, 2}, "Dataset type: 1 -> TUM, 1 -> RGBD_SCENES")->required();
     app.add_flag(
         "-d, --debug",
         [](size_t /*unused*/) {

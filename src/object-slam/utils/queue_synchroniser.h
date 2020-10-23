@@ -124,7 +124,7 @@ namespace oslam
             // Loop over payload timestamps until we reach the query timestamp
             // or we are past the asked timestamp (in which case, we failed).
             int i                              = 0;
-            static constexpr size_t timeout_ms = 100000U;  // Wait 1500ms at most!
+            static constexpr size_t timeout_ms = 15000U;  // Wait 1500ms at most!
             for (; i < max_iterations && timestamp > payload_timestamp; ++i)
             {
                 // TODO(Toni): add a timer to avoid waiting forever...

@@ -34,13 +34,15 @@ namespace oslam
         : MISO(output_queue, "Mapper"),
           map_(map),
           tracker_output_queue_(tracker_output_queue),
-          transport_output_queue_(transport_output_queue)
+          transport_output_queue_(transport_output_queue),
+          object_renders_queue_("ObjectRendersQueue")
     {
-        spdlog::debug("CONSTRUCT: Mapper");
+        spdlog::trace("CONSTRUCT: Mapper");
     }
 
     Mapper::InputUniquePtr Mapper::getInputPacket()
     {
+        spdlog::trace("Mapper::getInputPacket()");
         auto start_time = Timer::tic();
 
         TrackerOutput::UniquePtr mapper_payload;
@@ -54,6 +56,20 @@ namespace oslam
         const bool is_current_maskframe = mapper_payload->frame_.is_keyframe_;
 
         Mapper::InputUniquePtr mapper_input;
+
+        ObjectRenders::UniquePtr object_renders;
+        if(curr_timestamp_ == 1)
+        {
+            object_renders = std::make_unique<ObjectRenders>(curr_timestamp_, Renders({}));
+        }
+        else
+        {
+            if (!syncQueue<ObjectRenders::UniquePtr>(curr_timestamp_, &object_renders_queue_, &object_renders))
+            {
+                spdlog::error("Missing object renders with requested timestamp: {}", curr_timestamp_);
+                return nullptr;
+            }
+        }
         if (!is_current_maskframe)
         {
             spdlog::debug("Use old mask and geometric segment");
@@ -63,6 +79,7 @@ namespace oslam
                                                          mapper_payload->tracker_status_,
                                                          mapper_payload->frame_,
                                                          prev_transport_output_->instance_images_,
+                                                         object_renders->renders_,
                                                          mapper_payload->relative_camera_pose_);
         }
         else
@@ -85,8 +102,8 @@ namespace oslam
                                                          mapper_payload->tracker_status_,
                                                          mapper_payload->frame_,
                                                          transport_output->instance_images_,
-                                                         mapper_payload->relative_camera_pose_
-                                                         );
+                                                         object_renders->renders_,
+                                                         mapper_payload->relative_camera_pose_);
 
             prev_transport_output_ = std::move(transport_output);
             keyframe_timestamps_.push_back(curr_timestamp_);
@@ -97,25 +114,26 @@ namespace oslam
             return nullptr;
         }
         auto duration = Timer::toc(start_time).count();
-        spdlog::debug("Processed Mapper payload: {}, took {} ms", curr_timestamp_, duration);
+        spdlog::info("Processed Mapper payload: {}, took {} ms", curr_timestamp_, duration);
         return mapper_input;
     }
 
     Mapper::OutputUniquePtr Mapper::runOnce(Mapper::InputUniquePtr input)
     {
-        spdlog::trace("Entered Mapper::runOnce");
+        spdlog::trace("Mapper::runOnce()");
         const MapperInput& mapper_payload           = *input;
         curr_timestamp_                             = mapper_payload.timestamp_;
         const Timestamp& keyframe_timestamp         = keyframe_timestamps_.back();
         const Frame& frame                          = mapper_payload.frame_;
         const InstanceImages& instance_images       = mapper_payload.instance_images_;
+        const Renders& object_renders               = mapper_payload.object_renders_;
         const Eigen::Matrix4d& relative_camera_pose = mapper_payload.relative_camera_pose_;
         MapperStatus mapper_status                  = MapperStatus::INVALID;
-        InstanceImage bg_instance = InstanceImage(frame.width_, frame.height_);
+        InstanceImage bg_instance                   = InstanceImage(frame.width_, frame.height_);
 
-        Renders object_renders;
         bool needs_optimization = false;
 
+        auto start_time = Timer::tic();
         switch (mapper_payload.tracker_status_)
         {
             case TrackerStatus::VALID:
@@ -123,10 +141,8 @@ namespace oslam
                 if (curr_timestamp_ == 1)
                 {
                     initializeMapAndGraph(frame, instance_images, relative_camera_pose);
-                    object_renders = map_->renderObjects(frame, relative_camera_pose);
-                    spdlog::info("Rendered all objects in frame 1");
-                    bg_instance = createBgInstanceImage(frame, object_renders, instance_images);
-                    mapper_status  = MapperStatus::VALID;
+                    bg_instance   = createBgInstanceImage(frame, object_renders, instance_images);
+                    mapper_status = MapperStatus::VALID;
                     break;
                 }
                 else
@@ -135,7 +151,7 @@ namespace oslam
 
                     //! Add to the map
                     map_->addCameraPose(camera_pose);
-                    spdlog::info("Added camera pose into map");
+                    spdlog::trace("Added camera pose into map");
                     if (curr_timestamp_ == keyframe_timestamp && keyframe_timestamps_.size() >= 2)
                     {
                         auto prev_keyframe_timestamp   = *(keyframe_timestamps_.end() - 2);
@@ -149,24 +165,21 @@ namespace oslam
                         needs_optimization = true;
                     }
 
-
                     //! Integrate background
                     map_->integrateBackground(frame, InstanceImage(frame.width_, frame.height_), camera_pose);
-                    spdlog::info("Integrated background");
+                    spdlog::trace("Integrated background");
 
                     //! Project the instance images (object masks) into the current frame
                     InstanceImages frame_instance_images;
                     projectInstanceImages(keyframe_timestamp, frame, instance_images, frame_instance_images);
-                    spdlog::info("Projected instance images");
+                    spdlog::trace("Projected instance images");
 
                     //! Associate and integrate objects in the map
-                    object_renders = map_->renderObjects(frame, camera_pose);
-                    spdlog::info("Rendered objects");
                     std::vector<bool> frame_instance_matches =
                         integrateObjects(object_renders, frame_instance_images, frame, camera_pose);
-                    spdlog::info("Integrated objects");
+                    spdlog::trace("Integrated objects");
 
-                    spdlog::info("Number of frame instance matches: {}", frame_instance_matches.size());
+                    spdlog::trace("Number of frame instance matches: {}", frame_instance_matches.size());
 
                     // Create new objects for unmatched instance images
                     bool num_created =
@@ -190,7 +203,7 @@ namespace oslam
         const gtsam::VariableIndex variable_index(pose_graph_);
         for (const auto& object_key : deleted_object_keys)
         {
-            if(pose_values_.exists(object_key))
+            if (pose_values_.exists(object_key))
             {
                 const auto& slots = variable_index[object_key];
                 removed_factor_slots.insert(slots.begin(), slots.end());
@@ -198,9 +211,9 @@ namespace oslam
             }
         }
         //! TODO: Replace the removed factors with marginalized factor??
-        for(size_t slot: removed_factor_slots)
+        for (size_t slot : removed_factor_slots)
         {
-            if(pose_graph_.at(slot))
+            if (pose_graph_.at(slot))
             {
                 pose_graph_.remove(slot);
             }
@@ -217,7 +230,7 @@ namespace oslam
         if (needs_optimization)
         {
             gtsam::LevenbergMarquardtOptimizer optimizer = gtsam::LevenbergMarquardtOptimizer(pose_graph_, pose_values_);
-            gtsam::Values new_values = optimizer.optimize();
+            gtsam::Values new_values                     = optimizer.optimize();
             spdlog::info("Graph error before optimize: {}", pose_graph_.error(pose_values_));
             spdlog::info("Graph error after optimize: {}", pose_graph_.error(new_values));
             map_->update(new_values, keyframe_timestamps_);
@@ -227,6 +240,7 @@ namespace oslam
             map_->addBackground(createBackground(frame, map_->getCameraPose(curr_timestamp_)));
             mapper_status = MapperStatus::OPTIMIZED;
         }
+        spdlog::info("Mapper took {} ms", Timer::toc(start_time).count());
         return std::make_unique<RendererInput>(curr_timestamp_, mapper_status, bg_instance, object_renders, frame);
     }
 
@@ -234,15 +248,13 @@ namespace oslam
                                        const InstanceImages& instance_images,
                                        const Eigen::Matrix4d& camera_pose)
     {
-        spdlog::trace("Entered Mapper::initializeMapAndGraph");
+        spdlog::trace("Mapper::initializeMapAndGraph()");
         //! Add to the map
         map_->addCameraPose(camera_pose);
-        spdlog::info("Added camera pose");
 
         //! Add prior and value to the graph
         addPriorFactor(curr_timestamp_, camera_pose);
         addCameraValue(curr_timestamp_, camera_pose);
-        spdlog::info("Added prior factor and value in pose graph");
 
         //! Create background for tracking
         map_->addBackground(createBackground(frame, camera_pose));
@@ -251,7 +263,6 @@ namespace oslam
         for (const auto& instance_image : instance_images)
         {
             TSDFObject::UniquePtr object = createObject(frame, instance_image, camera_pose);
-            spdlog::info("Created object");
             if (!object)
             {
                 spdlog::debug("Object construction failed!");
@@ -310,32 +321,35 @@ namespace oslam
 
             BoundingBox proj_bbox;
             transform_project_bbox(instance_image.bbox_, proj_bbox, depthf, frame.intrinsic_, T_keyframe_to_camera);
-            projected_instance_images.emplace_back(proj_mask, proj_bbox, instance_image.label_, instance_image.score_, instance_image.feature_);
+            projected_instance_images.emplace_back(
+                proj_mask, proj_bbox, instance_image.label_, instance_image.score_, instance_image.feature_);
         }
     }
 
-    InstanceImage Mapper::createBgInstanceImage(const Frame& frame, const Renders& object_renders, const InstanceImages& instance_images) const
+    InstanceImage Mapper::createBgInstanceImage(const Frame& frame,
+                                                const Renders& object_renders,
+                                                const InstanceImages& instance_images) const
     {
         cv::Mat bg_mask = cv::Mat::zeros(frame.height_, frame.width_, CV_8UC1);
-        /* for(const auto& render_pair : object_renders) */
-        /* { */
-        /*     const Render& object_render = render_pair.second; */
-        /*     cv::Mat gray; */
-        /*     cv::cvtColor(object_render.color_map_, gray, cv::COLOR_BGR2GRAY); */
-        /*     cv::Mat mask; */
-        /*     cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY); */
-        /*     cv::bitwise_or(bg_mask, mask, bg_mask); */
-        /* } */
-        for(const auto& instance_image : instance_images)
+        for(const auto& render_pair : object_renders)
+        {
+            const Render& object_render = render_pair.second;
+            cv::Mat gray;
+            cv::cvtColor(object_render.color_map_, gray, cv::COLOR_BGR2GRAY);
+            cv::Mat mask;
+            cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY);
+            cv::bitwise_or(bg_mask, mask, bg_mask);
+        }
+        for (const auto& instance_image : instance_images)
         {
             cv::bitwise_or(bg_mask, instance_image.maskb_, bg_mask);
         }
+        bg_mask = ~bg_mask;
         cv::Mat im_floodfill = bg_mask.clone();
         cv::floodFill(im_floodfill, cv::Point(0, 0), cv::Scalar(255));
 
-        cv::Mat im_floodfill_inv = ~im_floodfill;
-        bg_mask = ~(bg_mask | im_floodfill_inv);
-        return InstanceImage(bg_mask, BoundingBox({0, 0, frame.width_, frame.height_}), 0, 1);
+        bg_mask                  = ~(bg_mask | ~im_floodfill);
+        return InstanceImage(bg_mask, BoundingBox({ 0, 0, frame.width_, frame.height_ }), 0, 1);
     }
 
     std::vector<bool> Mapper::integrateObjects(const Renders& object_renders,
@@ -345,9 +359,9 @@ namespace oslam
     {
         //! NOTE: Object renders size is 1 less than frame_instance_images size
         std::vector<bool> frame_instance_matches(frame_instance_images.size(), false);
-        spdlog::info("Frame instance images size: {}, Frame instance matches size: {}",
-                     frame_instance_images.size(),
-                     frame_instance_matches.size());
+        spdlog::debug("Frame instance images size: {}, Frame instance matches size: {}",
+                      frame_instance_images.size(),
+                      frame_instance_matches.size());
         for (const auto& render_pair : object_renders)
         {
             const ObjectId& id       = render_pair.first;
@@ -443,20 +457,20 @@ namespace oslam
     {
         if (instance_image.score_ < SCORE_THRESHOLD)
         {
-            spdlog::warn(
+            spdlog::debug(
                 "Object {} with score {} is below score threshold. Not added", instance_image.label_, instance_image.score_);
             return nullptr;
         }
         // If the masksize is smaller that 50^2 pixels
         if (cv::countNonZero(instance_image.maskb_) < 2500)
         {
-            spdlog::warn("Object {} width score {} is too small. Not added", instance_image.label_, instance_image.score_);
+            spdlog::debug("Object {} width score {} is too small. Not added", instance_image.label_, instance_image.score_);
             return nullptr;
         }
 
         Eigen::Vector2i object_center = Eigen::Vector2i((instance_image.bbox_[0] + instance_image.bbox_[2]) / 2,
                                                         (instance_image.bbox_[1] + instance_image.bbox_[3]) / 2);
-        spdlog::info("Object center: {}", object_center);
+        spdlog::debug("Object center: {}", object_center);
         if (!(object_center[0] >= InstanceImage::BORDER_WIDTH &&
               object_center[0] < frame.width_ - InstanceImage::BORDER_WIDTH &&
               object_center[1] >= InstanceImage::BORDER_WIDTH &&
@@ -493,10 +507,10 @@ namespace oslam
         {
             if (iter->score_ < SCORE_THRESHOLD)
             {
-                spdlog::warn("InstanceImage {} with score {} is below score threshold. Not matched with {}",
-                             iter->label_,
-                             iter->score_,
-                             id);
+                spdlog::debug("InstanceImage {} with score {} is below score threshold. Not matched with {}",
+                              iter->label_,
+                              iter->score_,
+                              id);
                 continue;
             }
 
@@ -510,13 +524,14 @@ namespace oslam
             //! Object did not get rendered, nor was there a detection
             if (union_val < 10)
                 continue;
-            auto quality = static_cast<float>(intersection_val) / static_cast<float>(union_val);
+            auto quality          = static_cast<float>(intersection_val) / static_cast<float>(union_val);
             double matching_score = map_->computeObjectMatch(id, iter->feature_);
 
-            if(matching_score >= 300.0 && quality < HIGH_IOU_OVERLAP_THRESHOLD)
+            if (matching_score >= 300.0 && quality < HIGH_IOU_OVERLAP_THRESHOLD)
                 continue;
             size_t curr_idx = size_t(iter - instance_images.begin());
-            spdlog::debug("{} -> Quality of the association: {}, {} Target label: {}", id, quality, matching_score, iter->label_);
+            spdlog::debug(
+                "{} -> Quality of the association: {}, {} Target label: {}", id, quality, matching_score, iter->label_);
             if (!instance_matches.at(curr_idx) && quality > IOU_OVERLAP_THRESHOLD && union_val > MASK_AREA_THRESHOLD)
             {
                 instance_matches.at(curr_idx) = true;
@@ -569,4 +584,4 @@ namespace oslam
     {
         pose_values_.insert(object_key, gtsam::Pose3(object_pose));
     }
-} // namespace oslam
+}  // namespace oslam

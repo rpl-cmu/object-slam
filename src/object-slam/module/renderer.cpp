@@ -24,28 +24,30 @@
 
 namespace oslam
 {
-    Renderer::Renderer(const Map::Ptr& map, InputQueue* input_queue) : SIMO(input_queue, "Renderer"), map_(map) {}
+    Renderer::Renderer(const Map::Ptr& map, InputQueue* input_queue) : SIMO(input_queue, "Renderer"), map_(map)
+    {
+        spdlog::trace("CONSTRUCT: Renderer");
+    }
 
     Renderer::OutputUniquePtr Renderer::runOnce(Renderer::InputUniquePtr input)
     {
-        spdlog::info("Reached renderer runOnce");
+        spdlog::trace("Renderer::runOnce()");
         curr_timestamp_                         = input->timestamp_;
         const RendererInput& renderer_payload   = *input;
         const Frame& frame                      = renderer_payload.frame_;
         const Eigen::Matrix3d& intrinsic_matrix = frame.intrinsic_.intrinsic_matrix_ * 4.0;
         const InstanceImage& bg_instance        = renderer_payload.bg_instance_;
 
-        spdlog::info("Filling camera trajectory");
         std::vector<cv::Affine3d> camera_trajectory_3d = fillCameraTrajectory(map_->getCameraTrajectory());
-        spdlog::info("Filled camera_trajectory");
 
         if (renderer_payload.mapper_status_ == MapperStatus::VALID ||
             renderer_payload.mapper_status_ == MapperStatus::OPTIMIZED)
         {
-            auto raycast_start_time = Timer::tic();
-            spdlog::info("Mapping status is valid");
+            auto render_start_time = Timer::tic();
 
             Render background_render = map_->renderBackground(frame, map_->getCameraPose(curr_timestamp_));
+            Renders all_renders      = map_->renderObjects(frame, map_->getCameraPose(curr_timestamp_));
+            spdlog::info("Rendering objects took {} ms", Timer::toc(render_start_time).count());
 
             cv::Mat color_map, vertex_map, normal_map;
             background_render.color_map_.copyTo(color_map, bg_instance.maskb_);
@@ -54,94 +56,82 @@ namespace oslam
 
             cv::imshow("Background render", color_map);
 
-            Renders all_renders = map_->renderObjects(frame, map_->getCameraPose(curr_timestamp_));
             all_renders.emplace_back(map_->getBackgroundId(), Render(color_map, vertex_map, normal_map));
 
-            std::vector<cv::Mat> depth_array;
-            std::vector<cv::Mat> color_array;
-            std::vector<cv::Mat> vertex_array;
-            std::vector<cv::Mat> normal_array;
-            depth_array.reserve(all_renders.size());
-            color_array.reserve(all_renders.size());
-            vertex_array.reserve(all_renders.size());
-            normal_array.reserve(all_renders.size());
+            Render model_render = composeSceneRenders(all_renders);
 
-            for (auto iter = all_renders.begin(); iter != all_renders.end(); ++iter)
-            {
-                const Render& render = iter->second;
-                cv::Mat depth;
-
-                // Extract Z channel as depth of the object vertices
-                cv::extractChannel(render.vertex_map_, depth, 2);
-
-                depth_array.push_back(depth);
-                color_array.push_back(render.color_map_);
-                vertex_array.push_back(render.vertex_map_);
-                normal_array.push_back(render.normal_map_);
-            }
-            // multichannel image with channels = num of objects in camera frustum
-            cv::Mat object_depths;
-            cv::merge(depth_array, object_depths);
-
-            std::vector<int> shape         = { object_depths.rows, object_depths.cols, object_depths.channels() };
-            xt::xarray<float> depth_xarray = xt::adapt((float*)object_depths.data,
-                                                       object_depths.total() * static_cast<size_t>(object_depths.channels()),
-                                                       xt::no_ownership(),
-                                                       shape);
-
-            //! Use a constant greater than max depth threshold
-            depth_xarray = xt::where(xt::isfinite(depth_xarray), depth_xarray, 101);
-            depth_xarray = xt::where(depth_xarray <= 0, 101, depth_xarray);
-
-            xt::xarray<int> min_idx = xt::argmin(depth_xarray, depth_xarray.dimension() - 1);
-
-            // Just for visualization
-            xt::xarray<float> min_depth = xt::amin(depth_xarray, depth_xarray.dimension() - 1);
-            cv::Mat min_depth_mat       = cv::Mat(min_depth.shape()[0], min_depth.shape()[1], CV_32FC1, min_depth.data());
-
-            cv::Mat layered_color  = cv::Mat::zeros(frame.color_.rows, frame.color_.cols, CV_8UC3);
-            cv::Mat layered_vertex = cv::Mat::zeros(frame.color_.rows, frame.color_.cols, CV_32FC3);
-            cv::Mat layered_normal = cv::Mat::zeros(frame.color_.rows, frame.color_.cols, CV_32FC3);
-
-            for (int row = 0; row < frame.color_.rows; ++row)
-            {
-                for (int col = 0; col < frame.color_.cols; ++col)
-                {
-                    size_t layer                           = min_idx(row, col);
-                    layered_color.at<cv::Vec3b>(row, col)  = color_array.at(layer).at<cv::Vec3b>(row, col);
-                    layered_vertex.at<cv::Vec3f>(row, col) = vertex_array.at(layer).at<cv::Vec3f>(row, col);
-                    layered_normal.at<cv::Vec3f>(row, col) = normal_array.at(layer).at<cv::Vec3f>(row, col);
-                }
-            }
-            Render::UniquePtr layered_render = std::make_unique<Render>(layered_color, layered_vertex, layered_normal);
-
+            all_renders.pop_back();
             RendererOutput::UniquePtr render_output =
-                std::make_unique<RendererOutput>(curr_timestamp_ + 1, std::move(layered_render));
-
-            //! TODO: Mesh output should be part of RendererOutput
-            WidgetPtr traj_widget    = render3dTrajectory(camera_trajectory_3d);
-            WidgetPtr frustum_widget = render3dFrustumWithColorMap(camera_trajectory_3d, intrinsic_matrix, layered_color);
+                std::make_unique<RendererOutput>(curr_timestamp_ + 1, model_render, all_renders);
 
             auto object_bboxes = map_->getAllObjectBoundingBoxes();
+            auto point_planes  = map_->getCameraFrustumPlanes(map_->getCameraPose(curr_timestamp_));
+
+            render_output->widgets_map_.emplace("Trajectory", render3dTrajectory(camera_trajectory_3d));
+            render_output->widgets_map_.emplace(
+                "Frustum", render3dFrustumWithColorMap(camera_trajectory_3d, intrinsic_matrix, model_render.color_map_));
             renderObjectCubes(object_bboxes, render_output->widgets_map_);
+            renderFrustumPlanes(point_planes, render_output->widgets_map_);
 
             /* if(renderer_payload.mapper_status_ == MapperStatus::OPTIMIZED) */
             /* { */
             /*     auto object_meshes = map_->meshAllObjects(); */
             /*     renderObjectMeshes(object_meshes, render_output->widgets_map_); */
             /* } */
-            auto point_planes = map_->getCameraFrustumPlanes(map_->getCameraPose(curr_timestamp_));
-            renderFrustumPlanes(point_planes, render_output->widgets_map_);
 
-            auto raycast_finish_time = Timer::toc(raycast_start_time).count();
-
-            spdlog::debug("Raycasting map object took {} ms", raycast_finish_time);
-
-            render_output->widgets_map_.emplace("Trajectory", std::move(traj_widget));
-            render_output->widgets_map_.emplace("Frustum", std::move(frustum_widget));
+            spdlog::info("Renderer took {} ms", Timer::toc(render_start_time).count());
             return render_output;
         }
         return nullptr;
+    }
+
+    Render Renderer::composeSceneRenders(const Renders& renders) const
+    {
+        std::vector<cv::Mat> depth_array, color_array, vertex_array, normal_array;
+
+        for (auto iter = renders.begin(); iter != renders.end(); ++iter)
+        {
+            const Render& render = iter->second;
+
+            cv::Mat depth;
+            cv::extractChannel(render.vertex_map_, depth, 2);
+            depth_array.push_back(depth);
+
+            color_array.push_back(render.color_map_);
+            vertex_array.push_back(render.vertex_map_);
+            normal_array.push_back(render.normal_map_);
+        }
+        cv::Mat object_depths;
+        cv::merge(depth_array, object_depths);
+
+        //! TODO: Using xtensor only for this one task is not warranted.
+        std::vector<int> shape         = { object_depths.rows, object_depths.cols, object_depths.channels() };
+        xt::xarray<float> depth_xarray = xt::adapt((float*)object_depths.data,
+                                                   object_depths.total() * static_cast<size_t>(object_depths.channels()),
+                                                   xt::no_ownership(),
+                                                   shape);
+
+        //! Use a constant greater than max depth threshold
+        depth_xarray = xt::where(xt::isfinite(depth_xarray), depth_xarray, 100);
+        depth_xarray = xt::where(depth_xarray <= 0, 100, depth_xarray);
+
+        xt::xarray<size_t> min_idx = xt::argmin(depth_xarray, depth_xarray.dimension() - 1);
+
+        cv::Mat layered_color  = cv::Mat::zeros(object_depths.rows, object_depths.cols, CV_8UC3);
+        cv::Mat layered_vertex = cv::Mat::zeros(object_depths.rows, object_depths.cols, CV_32FC3);
+        cv::Mat layered_normal = cv::Mat::zeros(object_depths.rows, object_depths.cols, CV_32FC3);
+
+        for (int row = 0; row < object_depths.rows; ++row)
+        {
+            for (int col = 0; col < object_depths.cols; ++col)
+            {
+                size_t layer                           = min_idx(row, col);
+                layered_color.at<cv::Vec3b>(row, col)  = color_array.at(layer).at<cv::Vec3b>(row, col);
+                layered_vertex.at<cv::Vec3f>(row, col) = vertex_array.at(layer).at<cv::Vec3f>(row, col);
+                layered_normal.at<cv::Vec3f>(row, col) = normal_array.at(layer).at<cv::Vec3f>(row, col);
+            }
+        }
+        return Render(layered_color, layered_vertex, layered_normal);
     }
 
     std::vector<cv::Affine3d> Renderer::fillCameraTrajectory(const PoseTrajectory& camera_trajectory)
@@ -162,7 +152,7 @@ namespace oslam
         return camera_trajectory_3d;
     }
 
-    WidgetPtr Renderer::render3dTrajectory(const std::vector<cv::Affine3d>& camera_trajectory_3d)
+    WidgetPtr Renderer::render3dTrajectory(const std::vector<cv::Affine3d>& camera_trajectory_3d) const
     {
         //! TODO: Limit trajectory length
         return std::make_shared<cv::viz::WTrajectory>(
@@ -171,7 +161,7 @@ namespace oslam
 
     WidgetPtr Renderer::render3dFrustumTraj(const std::vector<cv::Affine3d>& camera_trajectory_3d,
                                             const Eigen::Matrix3d& intrinsic_matrix,
-                                            const size_t& num_prev_frustums)
+                                            const size_t& num_prev_frustums) const
     {
         cv::Matx33d K;
         cv::eigen2cv(intrinsic_matrix, K);
@@ -189,7 +179,7 @@ namespace oslam
 
     WidgetPtr Renderer::render3dFrustumWithColorMap(const std::vector<cv::Affine3d>& camera_trajectory_3d,
                                                     const Eigen::Matrix3d& intrinsic_matrix,
-                                                    const cv::Mat& color_map)
+                                                    const cv::Mat& color_map) const
     {
         cv::Matx33d K;
         cv::eigen2cv(intrinsic_matrix, K);
@@ -243,7 +233,7 @@ namespace oslam
                 cv::eigen2cv(plane_center, cv_plane_center);
                 std::string plane_string = fmt::format("plane_{}", i);
                 std::string arrow_string = fmt::format("Arrow_{}", i);
-                cv::Vec3d second_point = cv_plane_center + 0.25 * cv_plane_normal;
+                cv::Vec3d second_point   = cv_plane_center + 0.25 * cv_plane_normal;
                 widget_map.emplace(
                     arrow_string,
                     std::make_unique<cv::viz::WArrow>(cv_plane_center, second_point, 0.02, cv::viz::Color::yellow()));

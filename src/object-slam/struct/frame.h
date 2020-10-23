@@ -67,12 +67,11 @@ namespace oslam
         const int width_  = -1;
         const int height_ = -1;
 
-
         //! Color and depth images
         const cv::Mat color_;
         const cv::Mat depth_;
         const camera::PinholeCameraIntrinsic intrinsic_;
-        const bool is_keyframe_ = { false };                  //!< False if frame doesn't have segmentation
+        const bool is_keyframe_   = { false };  //!< False if frame doesn't have segmentation
         const float depth_factor_ = 1000.0f;
         const float max_depth_    = 3.0f;
         Eigen::Matrix4d pose_ = Eigen::Matrix4d::Identity();  //!< Pose of the frame to current local submap TODO: Required?
@@ -96,5 +95,14 @@ namespace oslam
 
     using Renders          = std::vector<std::pair<ObjectId, Render>>;
     using RendersUniquePtr = std::unique_ptr<Renders>;
+
+    struct ObjectRenders : public PipelinePayload
+    {
+       public:
+        OSLAM_POINTER_TYPEDEFS(ObjectRenders);
+        ObjectRenders(Timestamp timestamp, const Renders& renders) : PipelinePayload(timestamp), renders_(renders) {}
+        ~ObjectRenders() = default;
+        Renders renders_;
+    };
 }  // namespace oslam
 #endif /* ifndef OSLAM_FRAME_H */

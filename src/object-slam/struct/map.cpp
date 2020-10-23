@@ -71,7 +71,7 @@ namespace oslam
         ObjectId curr_object_id = object->id_;
         if (curr_object_id.label == 0)
         {
-            spdlog::warn("Trying to add background object in map hashtable, returning");
+            spdlog::debug("Trying to add background object in map hashtable, returning");
             return false;
         }
         auto success = id_to_object_.insert(std::make_pair(curr_object_id, std::move(object)));
@@ -110,7 +110,7 @@ namespace oslam
                 }
 
                 //! TODO: Render the objects
-                spdlog::info("Current object ID: {} is in frustum", id);
+                spdlog::debug("Current object ID: {} is in frustum", id);
                 cuda::ImageCuda<float, 3> vertex;
                 cuda::ImageCuda<float, 3> normal;
                 cuda::ImageCuda<uchar, 3> color;
@@ -132,7 +132,7 @@ namespace oslam
             else
             {
                 //! Download the object onto CPU memory
-                spdlog::info("Current object ID: {} is not in frustum", id);
+                spdlog::debug("Current object ID: {} is not in frustum", id);
                 object->downloadVolumeToCPU();
             }
 
@@ -210,7 +210,7 @@ namespace oslam
             double existence_expect = object->getExistExpectation();
             spdlog::debug("{} -> Existence expectation: {}", id, existence_expect);
 
-            if (existence_expect <= 0.2)
+            if (existence_expect <= 0.1)
             {
                 to_delete_objects.push_back(id);
                 to_delete_object_keys.push_back(object->hash(id));

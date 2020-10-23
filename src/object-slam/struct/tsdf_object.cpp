@@ -122,19 +122,10 @@ namespace oslam
             }
         }
 
-        /* auto match_score = xt::norm_l1(difference); */
-
-        /* spdlog::info("Matching score between object: {}", match_score); */
         open3d::cuda::RGBDImageCuda object_rgbd_cuda(frame.max_depth_, frame.depth_factor_);
         object_rgbd_cuda.Upload(object_depth, color);
 
-        /* open3d::cuda::PointCloudCuda object_point_cloud(open3d::cuda::VertexRaw, frame.width_ * frame.height_); */
-        /* object_point_cloud.Build(object_rgbd_cuda, intrinsic_cuda_); */
-
-        /* auto cpu_pcl = object_point_cloud.Download(); */
-        /* open3d::visualization::DrawGeometries({cpu_pcl}, "Integrating object cloud"); */
         open3d::cuda::TransformCuda camera_to_object_cuda;
-        /* Eigen::Matrix4d camera_to_object = pose_.inverse() * camera_pose; */
         camera_to_object_cuda.FromEigen(camera_pose);
 
         open3d::cuda::ImageCuda<uchar, 1> mask_cuda;
@@ -206,8 +197,6 @@ namespace oslam
         auto volumes = volume_cpu_->second;
 
         spdlog::info("Length of keys: {}, length of volumes: {}", keys.size(), volumes.size());
-        if(keys.size() <= 0 || volumes.size() <= 0)
-            return;
         cuda::TransformCuda object_pose_cuda;
         object_pose_cuda.FromEigen(pose_);
 
