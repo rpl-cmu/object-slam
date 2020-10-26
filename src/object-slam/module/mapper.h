@@ -65,6 +65,7 @@ namespace oslam
 
         virtual InputUniquePtr getInputPacket() override;
 
+        virtual void shutdownQueues() override;
         void initializeMapAndGraph(const Frame& frame,
                                    const InstanceImages& instance_images,
                                    const Eigen::Matrix4d& camera_pose);

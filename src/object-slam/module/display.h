@@ -37,7 +37,7 @@ namespace oslam
         using DisplayInputQueue   = ThreadsafeQueue<DisplayInput::UniquePtr>;
         using FrameInputQueue     = ThreadsafeQueue<Frame::UniquePtr>;
 
-        explicit Display(const std::string& window_name);
+        explicit Display(std::string window_name);
         virtual ~Display();
 
         virtual OutputUniquePtr runOnce(InputUniquePtr input) override;

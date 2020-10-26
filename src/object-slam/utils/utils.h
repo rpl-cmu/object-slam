@@ -63,17 +63,20 @@ namespace oslam
         if (!is_valid_depth(depth_left_top) || !is_valid_depth(depth_right_bottom))
         {
             spdlog::debug("Depth at left point: {}, Depth at right point: {}\n", depth_left_top, depth_right_bottom);
-            return false;
+            //! Try once more
+            depth_left_top     = r_depth.at<float>(bbox[1]-2, bbox[0]-2);
+            depth_right_bottom = r_depth.at<float>(bbox[3]-2, bbox[2]-2);
+
+            if(!is_valid_depth(depth_left_top) || !is_valid_depth(depth_right_bottom))
+                return false;
         }
         Eigen::Vector3d left_top_3dpoint =
             inverse_project_point(left_top_point, r_intrinsic, static_cast<double>(r_depth.at<float>(bbox[1], bbox[0])));
         Eigen::Vector3d right_bottom_3dpoint =
             inverse_project_point(right_bottom_point, r_intrinsic, static_cast<double>(r_depth.at<float>(bbox[3], bbox[2])));
 
-        Eigen::Vector4d left_top_4dpoint;
-        Eigen::Vector4d right_bottom_4dpoint;
-        left_top_4dpoint << left_top_3dpoint(0), left_top_3dpoint(1), left_top_3dpoint(2), 1;
-        right_bottom_4dpoint << right_bottom_3dpoint(0), right_bottom_3dpoint(1), right_bottom_3dpoint(2), 1;
+        Eigen::Vector4d left_top_4dpoint{left_top_3dpoint(0), left_top_3dpoint(1), left_top_3dpoint(2), 1};
+        Eigen::Vector4d right_bottom_4dpoint{right_bottom_3dpoint(0), right_bottom_3dpoint(1), right_bottom_3dpoint(2), 1};
 
         Eigen::Vector4d tform_left_top     = r_transform * left_top_4dpoint;
         Eigen::Vector4d tform_right_bottom = r_transform * right_bottom_4dpoint;

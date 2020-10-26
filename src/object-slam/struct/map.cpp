@@ -102,8 +102,7 @@ namespace oslam
 
             if (isObjectInFrustum(object, camera_pose))
             {
-
-                if(object->volume_.device_ == nullptr)
+                if (object->volume_.device_ == nullptr)
                 {
                     spdlog::debug("Uploading object to GPU");
                     object->uploadVolumeToGPU();
@@ -132,10 +131,11 @@ namespace oslam
             else
             {
                 //! Download the object onto CPU memory
-                spdlog::debug("Current object ID: {} is not in frustum", id);
+                spdlog::info("Current object ID: {} is not in frustum", id);
+                //! TODO: Make the object value fixed
+
                 object->downloadVolumeToCPU();
             }
-
         }
         return object_renders;
     }
@@ -210,7 +210,7 @@ namespace oslam
             double existence_expect = object->getExistExpectation();
             spdlog::debug("{} -> Existence expectation: {}", id, existence_expect);
 
-            if (existence_expect <= 0.1)
+            if (existence_expect < 0.1)
             {
                 to_delete_objects.push_back(id);
                 to_delete_object_keys.push_back(object->hash(id));
@@ -278,9 +278,9 @@ namespace oslam
         min_point = object->getMinBound();
         max_point = object->getMaxBound();
 
-        bool result = true;
-        int out = 0;
-        int in = 0;
+        bool result     = true;
+        int out         = 0;
+        int in          = 0;
         auto get_vertex = [&min_point, &max_point](int index) -> Eigen::Vector3d {
             Eigen::Vector3d vertex = min_point;
 
@@ -288,7 +288,7 @@ namespace oslam
             double y = max_point(1) - min_point(1);
             double z = max_point(2) - min_point(2);
 
-            if(index >= 8)
+            if (index >= 8)
                 spdlog::error("Only 8 vertices");
 
             std::vector<Eigen::Vector3d> box_vertices;
@@ -307,17 +307,17 @@ namespace oslam
         for (const auto& point_plane : point_planes)
         {
             const Plane3d& plane                = point_plane.first;
-            const Eigen::Vector3d& plane_center = point_plane.second;
-            out = 0; in = 0;
-            for(int k = 0; k < 8 && (in ==0 || out == 0); k++)
+            out                                 = 0;
+            in                                  = 0;
+            for (int k = 0; k < 8 && (in == 0 || out == 0); k++)
             {
-                if(plane.signedDistance(get_vertex(k)) < 0)
+                if (plane.signedDistance(get_vertex(k)) < 0)
                     out++;
                 else
                     in++;
             }
         }
-        if(in == 0)
+        if (in == 0)
             result = false;
         return result;
     }
@@ -364,7 +364,7 @@ namespace oslam
         Eigen::Vector3d auxiliary, normal;
         auxiliary = near_top_center - camera_position;
         auxiliary.normalize();
-        normal = auxiliary.cross(camera_x);
+        normal                 = auxiliary.cross(camera_x);
         Plane3d near_top_plane = Plane3d(normal, near_top_center);
         near_top_plane.normalize();
         point_planes.emplace_back(near_top_plane, near_top_center);
@@ -372,7 +372,7 @@ namespace oslam
         //! Bottom plane
         auxiliary = near_bottom_center - camera_position;
         auxiliary.normalize();
-        normal = camera_x.cross(auxiliary);
+        normal                    = camera_x.cross(auxiliary);
         Plane3d near_bottom_plane = Plane3d(normal, near_bottom_center);
         near_bottom_plane.normalize();
         point_planes.emplace_back(near_bottom_plane, near_bottom_center);
@@ -380,7 +380,7 @@ namespace oslam
         //! Left plane
         auxiliary = near_left_center - camera_position;
         auxiliary.normalize();
-        normal = camera_y.cross(auxiliary);
+        normal                  = camera_y.cross(auxiliary);
         Plane3d near_left_plane = Plane3d(normal, near_left_center);
         near_left_plane.normalize();
         point_planes.emplace_back(near_left_plane, near_left_center);
@@ -388,7 +388,7 @@ namespace oslam
         //! Right plane
         auxiliary = near_right_center - camera_position;
         auxiliary.normalize();
-        normal = auxiliary.cross(camera_y);
+        normal                   = auxiliary.cross(camera_y);
         Plane3d near_right_plane = Plane3d(normal, near_right_center);
         near_right_plane.normalize();
         point_planes.emplace_back(near_right_plane, near_right_center);
@@ -416,7 +416,7 @@ namespace oslam
         }
         for (const auto& keyframe_timestamp : keyframe_timestamps)
         {
-            auto camera_key = gtsam::Symbol('c', keyframe_timestamp);
+            auto camera_key                               = gtsam::Symbol('c', keyframe_timestamp);
             gtsam::Pose3 updatedPose                      = values.at<gtsam::Pose3>(camera_key);
             camera_trajectory_.at(keyframe_timestamp - 1) = updatedPose.matrix();
         }
@@ -430,6 +430,48 @@ namespace oslam
 
         auto difference = object_feature - feature;
         return cv::norm(difference, cv::NORM_L1);
+    }
+
+    void Map::shutdown()
+    {
+        std::scoped_lock<std::mutex> lock_shutdown(mutex_);
+        fs::path output_path = fs::current_path() / "output";
+        if (fs::exists(output_path))
+        {
+            fs::remove_all(output_path);
+        }
+        if (!fs::create_directory(output_path))
+            spdlog::critical("Unable to create output directory at {}", output_path.string());
+
+        writeCameraTrajectory(output_path);
+        writeObjectVolumeToBin(output_path);
+    }  // namespace oslam
+
+    void Map::writeCameraTrajectory(const fs::path& output_path) const
+    {
+        spdlog::trace("Map::writeCameraTrajectory()");
+        fs::path camera_trajectory_file{ output_path / "camera_trajectory.txt" };
+        fs::ofstream trajectory_stream{ camera_trajectory_file };
+        for (const auto& camera_pose : camera_trajectory_)
+        {
+            trajectory_stream << camera_pose << "\n";
+        }
+    }
+
+    void Map::writeObjectVolumeToBin(const fs::path& output_path) const
+    {
+        spdlog::trace("Map::writeObjectVolumeToBin()");
+        fs::path object_path = output_path / "objects";
+        if (!fs::create_directory(object_path))
+            spdlog::critical("Unable to create objects directory at {}", object_path.string());
+        for (const auto& object_pair : id_to_object_)
+        {
+            const ObjectId& id            = object_pair.first;
+            const TSDFObject::Ptr& object = object_pair.second;
+
+            std::string object_filename = fmt::format("{}/{}.bin", object_path.string(), id);
+            open3d::io::WriteScalableTSDFVolumeToBIN(object_filename, object->volume_, true);
+        }
     }
 
 }  // namespace oslam

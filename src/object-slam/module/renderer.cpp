@@ -10,8 +10,6 @@
 #include <Open3D/IO/ClassIO/TriangleMeshIO.h>
 #include <Open3D/Open3D.h>
 
-#include <boost/filesystem.hpp>
-#include <boost/filesystem/operations.hpp>
 #include <fstream>
 #include <vector>
 #include <xtensor/xadapt.hpp>
@@ -136,17 +134,13 @@ namespace oslam
 
     std::vector<cv::Affine3d> Renderer::fillCameraTrajectory(const PoseTrajectory& camera_trajectory)
     {
-        using namespace boost::filesystem;
         std::vector<cv::Affine3d> camera_trajectory_3d;
         camera_trajectory_3d.reserve(camera_trajectory.size());
-        path camera_trajectory_file{ current_path() / "camera_trajectory.txt" };
-        ofstream trajectory_stream{ camera_trajectory_file };
         for (const auto& camera_pose : camera_trajectory)
         {
             cv::Matx44d cv_camera;
             cv::eigen2cv(camera_pose, cv_camera);
             cv::Affine3d cv_camera_pose(cv_camera);
-            trajectory_stream << camera_pose << "\n";
             camera_trajectory_3d.push_back(cv_camera_pose);
         }
         return camera_trajectory_3d;
@@ -212,7 +206,6 @@ namespace oslam
 
             auto cv_mesh        = cv::viz::Mesh::load(object_id_string);
             auto cv_mesh_widget = std::make_unique<cv::viz::WMesh>(cv_mesh);
-            boost::filesystem::remove(object_id_string);
 
             widget_map.emplace(object_id_string, std::move(cv_mesh_widget));
         }

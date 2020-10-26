@@ -54,12 +54,12 @@ namespace oslam
             cv::Point2i right_bottom = cv::Point2i(bbox_[2], bbox_[3]);
 
             // clang-format off
-            if ((left_top.x - 2 < mask.cols) && (left_top.x - 2 >= 0) &&
-                (left_top.y - 2 < mask.rows) && (left_top.y - 2 >= 0))
-                    left_top -= cv::Point2i(2, 2);
-            if ((right_bottom.x + 2 < mask.cols) && (right_bottom.x + 2 >= 0) &&
-                (right_bottom.y + 2 < mask.rows) && (right_bottom.y + 2 >= 0))
-                    right_bottom += cv::Point2i(2, 2);
+            /* if ((left_top.x - 2 < mask.cols) && (left_top.x - 2 >= 0) && */
+            /*     (left_top.y - 2 < mask.rows) && (left_top.y - 2 >= 0)) */
+            /*         left_top -= cv::Point2i(2, 2); */
+            /* if ((right_bottom.x + 2 < mask.cols) && (right_bottom.x + 2 >= 0) && */
+            /*     (right_bottom.y + 2 < mask.rows) && (right_bottom.y + 2 >= 0)) */
+            /*         right_bottom += cv::Point2i(2, 2); */
             // clang-format on
             bbox_mask_(cv::Rect(left_top, right_bottom)) = 255;
             bbox_mask_                                   = (bbox_mask_ >= 1);

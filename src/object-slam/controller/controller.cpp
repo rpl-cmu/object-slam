@@ -42,6 +42,7 @@ namespace oslam
 
     bool Controller::start()
     {
+        spdlog::trace("Controller::start()");
         std::string figlet =
             R"(
              ____  __     _         __  ______   ___   __  ___
@@ -63,16 +64,19 @@ namespace oslam
     void Controller::shutdown()
     {
         // TODO(Akash): Check whether the modules are running / queues are empty, etc.
+        spdlog::trace("Controller::shutdown()");
         data_reader_->shutdown();
         image_transport_->shutdown();
         tracker_->shutdown();
         mapper_->shutdown();
         renderer_->shutdown();
         display_->shutdown();
+        map_->shutdown();
     }
 
     bool Controller::setup()
     {
+        spdlog::trace("Controller::setup()");
         data_reader_->registerShutdownCallback([this](Timestamp timestamp) { tracker_->setMaxTimestamp(timestamp); });
         data_reader_->registerShutdownCallback([this](Timestamp timestamp) { mapper_->setMaxTimestamp(timestamp); });
         data_reader_->registerShutdownCallback([this](Timestamp timestamp) { display_->setMaxTimestamp(timestamp); });
@@ -113,6 +117,7 @@ namespace oslam
 
     bool Controller::shutdownWhenComplete()
     {
+        spdlog::trace("Controller::shutdownWhenComplete()");
         // clang-format off
         while (!shutdown_ &&
                 ((image_transport_->isWorking() || (!transport_input_queue_.isShutdown()  && !transport_input_queue_.empty())) ||
@@ -188,22 +193,22 @@ namespace oslam
         auto handle_renderer        = std::async(std::launch::async, &oslam::Renderer::run, renderer_);
         auto handle_shutdown        = std::async(std::launch::async, &oslam::Controller::shutdownWhenComplete, this);
 
-        display_->run();
+        bool handle_display = display_->run();
+        if(!handle_display)
+        {
+            spdlog::trace("Shutting down entire pipeline...");
+            shutdown_ = true;
+            shutdown();
+        }
 
         try
         {
-            handle_shutdown.get();
-            spdlog::info("Shutdown successful: {}", handle_shutdown.get());
-            handle_dataset.get();
             spdlog::info("Dataset reader successful: {}", handle_dataset.get());
-            handle_image_transport.get();
+            spdlog::info("Shutdown successful: {}", handle_shutdown.get());
             spdlog::info("Image Transporter successful: {}", handle_image_transport.get());
-            bool tracker_successful = handle_tracker.get();
-            spdlog::info("Tracker successful: {}", tracker_successful);
-            bool mapper_successful = handle_mapper.get();
-            spdlog::info("Mapper successful: {}", mapper_successful);
-            bool renderer_successful = handle_renderer.get();
-            spdlog::info("Renderer successful: {}", renderer_successful);
+            spdlog::info("Tracker successful: {}", handle_tracker.get());
+            spdlog::info("Mapper successful: {}", handle_mapper.get());
+            spdlog::info("Renderer successful: {}", handle_renderer.get());
         }
         catch (std::exception& ex)
         {

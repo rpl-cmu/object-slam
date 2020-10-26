@@ -5,7 +5,19 @@ add_executable(
   ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
 )
 
-target_link_libraries(reconstruct
-    PRIVATE
-    ${PROJECT_NAME}
-    )
+add_executable(
+  show_objects
+  ${CMAKE_CURRENT_SOURCE_DIR}/show-objects.cpp
+)
+
+target_link_libraries(
+  reconstruct
+  PRIVATE
+  ${PROJECT_NAME}
+)
+
+target_link_libraries(
+  show_objects
+  PRIVATE
+  ${PROJECT_NAME}
+)

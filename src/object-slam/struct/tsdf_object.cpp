@@ -166,6 +166,14 @@ namespace oslam
         volume_.RayCasting(vertex, normal, color, intrinsic_cuda_, camera_to_object_cuda);
     }
 
+    int TSDFObject::getActiveSubvolumesInFrame(Timestamp timestamp) const
+    {
+        if(volume_.device_ == nullptr)
+            return 0;
+
+        return volume_.GetVisibleSubvolumesCount(static_cast<int>(timestamp), 0);
+    }
+
     double TSDFObject::getVisibilityRatio(Timestamp timestamp) const
     {
         int visible_blocks = volume_.GetVisibleSubvolumesCount(static_cast<int>(timestamp), RETROSPECT_VISIBILITY_THRESH);

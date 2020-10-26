@@ -311,6 +311,11 @@ namespace oslam
             auto proj_mask_cuda =
                 cuda::SegmentationCuda::TransformAndProject(src_mask, depth, T_keyframe_to_camera_cuda, intrinsic_cuda);
             cv::Mat proj_mask = proj_mask_cuda.DownloadMat();
+
+            cv::Mat im_floodfill = proj_mask.clone();
+            cv::floodFill(im_floodfill, cv::Point(0, 0), cv::Scalar(255));
+            proj_mask = proj_mask | ~im_floodfill;
+
             BoundingBox proj_bbox;
             //! Do not use mask if it is too close to border
             if(!transform_project_bbox(instance_image.bbox_, proj_bbox, depthf, frame.intrinsic_, T_keyframe_to_camera))
@@ -339,9 +344,11 @@ namespace oslam
             cv::bitwise_or(bg_mask, instance_image.maskb_, bg_mask);
         }
 
-        cv::Mat im_floodfill = bg_mask.clone();
-        cv::floodFill(im_floodfill, cv::Point(0, 0), cv::Scalar(255));
-        bg_mask = ~(bg_mask | ~im_floodfill);
+        bg_mask = ~bg_mask;
+        //! Using floodfill is messy!
+        /* cv::Mat im_floodfill = bg_mask.clone(); */
+        /* cv::floodFill(im_floodfill, cv::Point(0, 0), cv::Scalar(255)); */
+        /* bg_mask = ~(bg_mask | ~im_floodfill); */
         return InstanceImage(bg_mask, BoundingBox({ 0, 0, frame.width_, frame.height_ }), 0, 1);
     }
 
@@ -577,5 +584,11 @@ inline void Mapper::addObjectValue(const gtsam::Key& object_key, const Eigen::Ma
 {
     spdlog::trace("Mapper::addObjectValue");
     pose_values_.insert(object_key, gtsam::Pose3(object_pose));
+}
+
+void Mapper::shutdownQueues()
+{
+    MISOPipelineModule::shutdownQueues();
+    object_renders_queue_.shutdown();
 }
 }  // namespace oslam

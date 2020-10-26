@@ -11,9 +11,9 @@
 #include "object-slam/payload/display_payload.h"
 namespace oslam
 {
-    Display::Display(const std::string& window_name)
+    Display::Display(std::string window_name)
         : MISO(nullptr, "Display"),
-          window_name_(window_name),
+          window_name_(std::move(window_name)),
           window_3d_(window_name + " map"),
           background_color_(),
           frame_queue_("DisplayFrameQueue"),
@@ -32,7 +32,7 @@ namespace oslam
         window_3d_.setViewerPose(cv::Affine3d::Identity());
     }
 
-    Display::~Display() { cv::destroyWindow(window_name_); }
+    Display::~Display() { }
 
     Display::InputUniquePtr Display::getInputPacket()
     {
@@ -109,6 +109,8 @@ namespace oslam
         if(window_3d_.wasStopped())
         {
             //! TODO: Callback to shutdown entire pipeline!
+            spdlog::trace("Stopping entire pipeline");
+            shutdown();
         }
         window_3d_.removeAllWidgets();
         for(auto it = widgets_map.begin(); it != widgets_map.end(); ++it)

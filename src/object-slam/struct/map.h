@@ -13,6 +13,9 @@
 #include <Eigen/Eigen>
 #include <gtsam/nonlinear/Values.h>
 
+#include <boost/filesystem.hpp>
+#include <boost/filesystem/operations.hpp>
+
 #include "object-slam/utils/macros.h"
 #include "object-slam/utils/types.h"
 
@@ -26,10 +29,12 @@ namespace oslam
      *  \brief A map representing a scene consists of a hashtable of object volumes, each with their own poses
      *  and hence forming a posegraph
      */
+    namespace fs = boost::filesystem;
+
     using ObjectBoundingBoxes = std::unordered_map<ObjectId, std::pair<Eigen::Vector3d, Eigen::Vector3d>>;
     using IdToObjectMesh      = std::unordered_map<ObjectId, std::shared_ptr<open3d::geometry::TriangleMesh>>;
-    using Plane3d = Eigen::Hyperplane<double, 3>;
-    using PointPlanes = std::vector<std::pair<Eigen::Hyperplane<double, 3>, Eigen::Vector3d>>;
+    using Plane3d             = Eigen::Hyperplane<double, 3>;
+    using PointPlanes         = std::vector<std::pair<Eigen::Hyperplane<double, 3>, Eigen::Vector3d>>;
 
     struct Map
     {
@@ -90,11 +95,17 @@ namespace oslam
 
         void update(const gtsam::Values& values, const std::vector<Timestamp>& keyframe_timestamps);
 
+        void shutdown();
+
        private:
         static constexpr double MIN_DEPTH = 0.01;
         static constexpr double MAX_DEPTH = 4.0;
+
         bool removeObject(const ObjectId& id);
         void getObjectBoundingBox(const ObjectId& id, Eigen::Vector3d& min_pt, Eigen::Vector3d& max_pt) const;
+
+        void writeCameraTrajectory(const fs::path& output_path) const;
+        void writeObjectVolumeToBin(const fs::path& output_path) const;
 
         TSDFObject::UniquePtr background_volume_;
         PoseTrajectory camera_trajectory_;  //! Sequence of the camera poses traversed in the map

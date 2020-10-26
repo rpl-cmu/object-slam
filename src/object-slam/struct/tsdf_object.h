@@ -75,6 +75,7 @@ namespace oslam
         [[nodiscard]] cuda::PinholeCameraIntrinsicCuda getIntrinsicCuda() const { return intrinsic_cuda_; }
         [[nodiscard]] double getExistExpectation() const { return double(existence_) / double(existence_ + non_existence_); }
         [[nodiscard]] double getVisibilityRatio(Timestamp timestamp) const;
+        [[nodiscard]] int getActiveSubvolumesInFrame(Timestamp timestamp) const;
 
         const ObjectId id_;        //!< Const public object ID Cannot be modified
         std::hash<ObjectId> hash;  //!< Functor for obtaining hash from object ID
