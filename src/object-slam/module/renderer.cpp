@@ -61,6 +61,7 @@ namespace oslam
             if(camera_trajectory_3d.size() > 25)
                 model_render = composeSceneRenders(all_renders);
 
+            cv::imshow("Composed render", model_render.color_map_);
             all_renders.pop_back();
             all_renders.emplace_back(map_->getBackgroundId(), background_render);
 

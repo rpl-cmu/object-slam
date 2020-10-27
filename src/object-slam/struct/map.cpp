@@ -461,7 +461,7 @@ namespace oslam
         const Feature& object_feature = object->instance_image_.feature_;
 
         auto difference = object_feature - feature;
-        return cv::norm(difference, cv::NORM_L1);
+        return cv::norm(difference, cv::NORM_L2);
     }
 
     void Map::shutdown()

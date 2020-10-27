@@ -41,6 +41,7 @@ namespace oslam
         using TrackerOutputQueue   = ThreadsafeQueue<TrackerOutput::UniquePtr>;
         using TransportOutputQueue = ThreadsafeQueue<ImageTransportOutput::UniquePtr>;
         using ObjectRendersQueue   = ThreadsafeQueue<ObjectRenders::UniquePtr>;
+        using Matches = std::unordered_map<ObjectId, InstanceImages::const_iterator>;
 
         Mapper(Map::Ptr map,
                TrackerOutputQueue* tracker_output_queue,
@@ -58,7 +59,6 @@ namespace oslam
        private:
         constexpr static double SCORE_THRESHOLD           = 0.7;
         constexpr static double IOU_OVERLAP_THRESHOLD      = 0.2;
-        constexpr static float HIGH_IOU_OVERLAP_THRESHOLD = 0.3F;
         constexpr static int MASK_AREA_THRESHOLD          = 2000;
         constexpr static int BACKGROUND_RESOLUTION        = 256;
         constexpr static int OBJECT_RESOLUTION            = 128;
@@ -78,7 +78,8 @@ namespace oslam
 
         InstanceImage createBgInstanceImage(const Frame& frame,
                                             const Renders& object_renders,
-                                            const InstanceImages& instance_images) const;
+                                            const InstanceImages& instance_images,
+                                            const Matches& object_to_instance_matches) const;
 
         bool shouldCreateNewBackground(Timestamp timestamp);
         static TSDFObject::UniquePtr createBackground(const Frame& frame, const Eigen::Matrix4d& camera_pose);
@@ -93,12 +94,12 @@ namespace oslam
 
         void updateMap(const gtsam::Values& values);
 
-        std::vector<bool> integrateObjects(const Renders& object_renders,
+        Matches integrateObjects(const Renders& object_renders,
                                            const InstanceImages& frame_instance_images,
                                            const Frame& frame,
                                            const Eigen::Matrix4d& camera_pose);
 
-        unsigned int createUnmatchedObjects(const std::vector<bool>& instance_matches,
+        unsigned int createUnmatchedObjects(const Matches& object_to_instance_matches,
                                             const InstanceImages& instance_images,
                                             const Frame& frame,
                                             const Eigen::Matrix4d& camera_pose);

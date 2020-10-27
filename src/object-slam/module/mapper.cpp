@@ -186,16 +186,16 @@ namespace oslam
                     spdlog::trace("Projected instance images");
 
                     //! Associate and integrate objects in the map
-                    std::vector<bool> frame_instance_matches =
+                    Matches object_to_instance_matches =
                         integrateObjects(object_renders, frame_instance_images, frame, camera_pose);
                     spdlog::trace("Integrated objects");
 
-                    spdlog::trace("Number of frame instance matches: {}", frame_instance_matches.size());
+                    spdlog::trace("Number of frame instance matches: {}", object_to_instance_matches.size());
 
                     // Create new objects for unmatched instance images
+                    bg_instance = createBgInstanceImage(frame, object_renders, frame_instance_images, object_to_instance_matches);
                     bool num_created =
-                        createUnmatchedObjects(frame_instance_matches, frame_instance_images, frame, camera_pose);
-                    bg_instance = createBgInstanceImage(frame, object_renders, frame_instance_images);
+                        createUnmatchedObjects(object_to_instance_matches, frame_instance_images, frame, camera_pose);
                     if (num_created)
                     {
                         needs_optimization = true;
@@ -357,37 +357,42 @@ namespace oslam
 
     InstanceImage Mapper::createBgInstanceImage(const Frame& frame,
                                                 const Renders& object_renders,
-                                                const InstanceImages& instance_images) const
+                                                const InstanceImages& instance_images,
+                                                const Matches& object_to_instance_matches) const
     {
         cv::Mat bg_mask = cv::Mat::zeros(frame.height_, frame.width_, CV_8UC1);
         for (const auto& render_pair : object_renders)
         {
+            const ObjectId& id = render_pair.first;
             const Render& object_render = render_pair.second;
-            cv::Mat gray;
-            cv::cvtColor(object_render.color_map_, gray, cv::COLOR_BGR2GRAY);
-            cv::Mat mask;
-            cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY);
-            cv::bitwise_or(bg_mask, mask, bg_mask);
+            if(object_to_instance_matches.count(id))
+            {
+                cv::Mat gray;
+                cv::cvtColor(object_render.color_map_, gray, cv::COLOR_BGR2GRAY);
+                cv::Mat mask;
+                cv::threshold(gray, mask, 10, 255, cv::THRESH_BINARY);
+                cv::bitwise_or(bg_mask, mask, bg_mask);
+            }
         }
-        for (const auto& instance_image : instance_images)
+        for (const auto& match : object_to_instance_matches)
         {
-            cv::bitwise_or(bg_mask, instance_image.maskb_, bg_mask);
+            const ObjectId& id = match.first;
+            const InstanceImages::const_iterator& iter = match.second;
+            cv::bitwise_or(bg_mask, iter->maskb_, bg_mask);
         }
 
         bg_mask = ~bg_mask;
         return InstanceImage(bg_mask, BoundingBox({ 0, 0, frame.width_, frame.height_ }), 0, 1);
     }
 
-    std::vector<bool> Mapper::integrateObjects(const Renders& object_renders,
-                                               const InstanceImages& frame_instance_images,
-                                               const Frame& frame,
-                                               const Eigen::Matrix4d& camera_pose)
+    Mapper::Matches Mapper::integrateObjects(const Renders& object_renders,
+                                     const InstanceImages& frame_instance_images,
+                                     const Frame& frame,
+                                     const Eigen::Matrix4d& camera_pose)
     {
-        //! NOTE: Object renders size is 1 less than frame_instance_images size
+        Matches object_to_instance_matches;
+
         std::vector<bool> frame_instance_matches(frame_instance_images.size(), false);
-        spdlog::debug("Frame instance images size: {}, Frame instance matches size: {}",
-                      frame_instance_images.size(),
-                      frame_instance_matches.size());
         //! Should only contain renders from objects in the camera frustum
         for (const auto& render_pair : object_renders)
         {
@@ -405,6 +410,7 @@ namespace oslam
             //! Match
             else
             {
+                object_to_instance_matches.insert_or_assign(id, iter);
                 map_->incrementExistence(id);
                 map_->integrateObject(id, frame, *iter, camera_pose);
                 if (curr_timestamp_ == keyframe_timestamps_.back())
@@ -416,15 +422,25 @@ namespace oslam
         }
         for (auto match : frame_instance_matches)
             spdlog::debug("Match: {}", match);
-        return frame_instance_matches;
+
+        return object_to_instance_matches;
     }
 
-    unsigned int Mapper::createUnmatchedObjects(const std::vector<bool>& instance_matches,
+    unsigned int Mapper::createUnmatchedObjects(const Matches& object_to_instance_matches,
                                                 const InstanceImages& instance_images,
                                                 const Frame& frame,
                                                 const Eigen::Matrix4d& camera_pose)
     {
         unsigned int objects_created = 0;
+
+        std::vector<bool> instance_matches(instance_images.size(), false);
+        for (const auto& match : object_to_instance_matches)
+        {
+            const auto& iter = match.second;
+            size_t idx = iter - instance_images.begin();
+            instance_matches.at(idx) = true;
+        }
+
         for (size_t i = 0; i < instance_matches.size(); i++)
         {
             if (!instance_matches.at(i))
@@ -496,8 +512,8 @@ namespace oslam
             return nullptr;
         }
 
-        Eigen::Vector2i left_top_point{instance_image.bbox_[0], instance_image.bbox_[1]};
-        Eigen::Vector2i right_bottom_point{instance_image.bbox_[2], instance_image.bbox_[3]};
+        Eigen::Vector2i left_top_point{ instance_image.bbox_[0], instance_image.bbox_[1] };
+        Eigen::Vector2i right_bottom_point{ instance_image.bbox_[2], instance_image.bbox_[3] };
         /* spdlog::debug("Object center: {}", object_center); */
         if (!(left_top_point(0) >= InstanceImage::BORDER_WIDTH &&
               left_top_point(0) < frame.width_ - InstanceImage::BORDER_WIDTH &&
