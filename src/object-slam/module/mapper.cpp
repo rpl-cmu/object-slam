@@ -126,11 +126,13 @@ namespace oslam
         const Timestamp& keyframe_timestamp         = keyframe_timestamps_.back();
         const Frame& frame                          = mapper_payload.frame_;
         const InstanceImages& instance_images       = mapper_payload.instance_images_;
-        const Renders& object_renders               = mapper_payload.object_renders_;
         const Eigen::Matrix4d& relative_camera_pose = mapper_payload.relative_camera_pose_;
         MapperStatus mapper_status                  = MapperStatus::INVALID;
         InstanceImage bg_instance                   = InstanceImage(frame.width_, frame.height_);
+        Renders object_renders                      = mapper_payload.object_renders_;
 
+        //! TODO: Should set this once directly from data_reader
+        map_->setMaxDepth(frame.max_depth_);
         bool needs_optimization = false;
 
         auto start_time = Timer::tic();
@@ -141,16 +143,28 @@ namespace oslam
                 if (curr_timestamp_ == 1)
                 {
                     initializeMapAndGraph(frame, instance_images, relative_camera_pose);
-                    bg_instance   = createBgInstanceImage(frame, object_renders, instance_images);
+                    bg_instance   = InstanceImage(cv::Mat::ones(frame.height_, frame.width_, CV_8UC1),
+                                                BoundingBox({ 0, 0, frame.width_, frame.height_ }),
+                                                0,
+                                                1);
                     mapper_status = MapperStatus::VALID;
                     break;
                 }
                 else
                 {
+                    assert(!object_renders.empty());
+                    std::pair<ObjectId, Render> background_render_pair = object_renders.back();
+                    const Render background_render                     = background_render_pair.second;
+                    object_renders.pop_back();
+
                     const Eigen::Matrix4d camera_pose = map_->getCameraPose(curr_timestamp_ - 1) * relative_camera_pose;
 
                     //! Add to the map
                     map_->addCameraPose(camera_pose);
+                    //! Integrate background
+                    map_->integrateBackground(frame, InstanceImage(frame.width_, frame.height_), camera_pose);
+                    spdlog::trace("Integrated background");
+
                     spdlog::trace("Added camera pose into map");
                     if (curr_timestamp_ == keyframe_timestamp && keyframe_timestamps_.size() >= 2)
                     {
@@ -158,20 +172,17 @@ namespace oslam
                         auto prev_keyframe_pose        = map_->getCameraPose(prev_keyframe_timestamp);
                         auto T_camera_to_prev_keyframe = prev_keyframe_pose.inverse() * camera_pose;
 
-                        addCameraCameraBetweenFactor(curr_timestamp_, prev_keyframe_timestamp, T_camera_to_prev_keyframe);
-                        addCameraValue(curr_timestamp_, camera_pose);
+                        auto camera_key = addCameraValue(curr_timestamp_, camera_pose);
+                        addCameraCameraBetweenFactor(camera_key, prev_keyframe_timestamp, T_camera_to_prev_keyframe);
                         spdlog::info("Added camera factor into pose_graph");
 
                         needs_optimization = true;
                     }
 
-                    //! Integrate background
-                    map_->integrateBackground(frame, InstanceImage(frame.width_, frame.height_), camera_pose);
-                    spdlog::trace("Integrated background");
-
                     //! Project the instance images (object masks) into the current frame
                     InstanceImages frame_instance_images;
-                    projectInstanceImages(keyframe_timestamp, frame, instance_images, frame_instance_images);
+                    projectInstanceImages(
+                        keyframe_timestamp, frame, background_render, instance_images, frame_instance_images);
                     spdlog::trace("Projected instance images");
 
                     //! Associate and integrate objects in the map
@@ -197,6 +208,15 @@ namespace oslam
         }
 
         auto deleted_object_keys = map_->deleteBadObjects();
+        /* auto not_in_frustum_object_keys = map_->objectsNotInFrustum(curr_timestamp_); */
+        /* for (auto& object_key : not_in_frustum_object_keys) */
+        /* { */
+        /*     if (pose_values_.exists(object_key)) */
+        /*     { */
+        /*         // Need to add prior to constrain object poses */
+        /*     } */
+        /* } */
+
         //! TODO: Delete factors and values associated with the key
         //! Stores iterators to the factors associated with keys to be deleted
         std::set<size_t> removed_factor_slots;
@@ -237,7 +257,7 @@ namespace oslam
             pose_values_ = new_values;
 
             //! Create new background here with updated keyframe_timestamp_ pose
-            map_->addBackground(createBackground(frame, map_->getCameraPose(curr_timestamp_)));
+            /* map_->addBackground(createBackground(frame, map_->getCameraPose(curr_timestamp_))); */
             mapper_status = MapperStatus::OPTIMIZED;
         }
         spdlog::info("Mapper took {} ms", Timer::toc(start_time).count());
@@ -253,8 +273,8 @@ namespace oslam
         map_->addCameraPose(camera_pose);
 
         //! Add prior and value to the graph
-        addPriorFactor(curr_timestamp_, camera_pose);
-        addCameraValue(curr_timestamp_, camera_pose);
+        auto camera_key = addCameraValue(curr_timestamp_, camera_pose);
+        addCameraPriorFactor(camera_key, camera_pose);
 
         //! Create background for tracking
         map_->addBackground(createBackground(frame, camera_pose));
@@ -273,8 +293,8 @@ namespace oslam
             Eigen::Matrix4d T_object_to_camera = camera_pose.inverse() * object->getPose();
 
             //! Add between factor and value to the graph
-            addObjectCameraBetweenFactor(object_key, curr_timestamp_, T_object_to_camera);
             addObjectValue(object_key, object->getPose());
+            addObjectCameraBetweenFactor(object_key, curr_timestamp_, T_object_to_camera);
 
             //! Add object to the map
             map_->addObject(std::move(object));
@@ -283,6 +303,7 @@ namespace oslam
 
     void Mapper::projectInstanceImages(const Timestamp& keyframe_timestamp,
                                        const Frame& frame,
+                                       const Render& background_render,
                                        const InstanceImages& instance_images,
                                        InstanceImages& projected_instance_images)
     {
@@ -295,17 +316,22 @@ namespace oslam
         cuda::PinholeCameraIntrinsicCuda intrinsic_cuda(frame.intrinsic_);
 
         projected_instance_images.reserve(instance_images.size());
+
+        cv::Mat render_depth;
+        cv::extractChannel(background_render.vertex_map_, render_depth, 2);
+
+        cuda::ImageCuda<float, 1> depth;
+        depth.Upload(render_depth);
+
         for (const auto& instance_image : instance_images)
         {
-            spdlog::debug("Projecting instance image with label: {}, score: {}", instance_image.label_, instance_image.score_);
+            if (instance_image.label_ == 0)
+                continue;
+            spdlog::debug(
+                "Projecting instance image with label: {}, score: {}", instance_image.label_, instance_image.score_);
             //! Project the mask from maskframe to current frame
             cuda::ImageCuda<uchar, 1> src_mask;
             src_mask.Upload(instance_image.maskb_);
-
-            cv::Mat depthf;
-            cv::rgbd::rescaleDepth(frame.depth_, CV_32FC1, depthf, frame.depth_factor_);
-            cuda::ImageCuda<float, 1> depth;
-            depth.Upload(depthf);
 
             // TODO: Use geometric segmentation
             auto proj_mask_cuda =
@@ -318,11 +344,15 @@ namespace oslam
 
             BoundingBox proj_bbox;
             //! Do not use mask if it is too close to border
-            if(!transform_project_bbox(instance_image.bbox_, proj_bbox, depthf, frame.intrinsic_, T_keyframe_to_camera))
+            if (!transform_project_bbox(
+                    instance_image.bbox_, proj_bbox, render_depth, frame.intrinsic_, T_keyframe_to_camera))
                 continue;
             projected_instance_images.emplace_back(
                 proj_mask, proj_bbox, instance_image.label_, instance_image.score_, instance_image.feature_);
         }
+        spdlog::debug("Projected instance images size: {}, Total instance images size: {}",
+                      projected_instance_images.size(),
+                      instance_images.size());
     }
 
     InstanceImage Mapper::createBgInstanceImage(const Frame& frame,
@@ -330,7 +360,7 @@ namespace oslam
                                                 const InstanceImages& instance_images) const
     {
         cv::Mat bg_mask = cv::Mat::zeros(frame.height_, frame.width_, CV_8UC1);
-        for(const auto& render_pair : object_renders)
+        for (const auto& render_pair : object_renders)
         {
             const Render& object_render = render_pair.second;
             cv::Mat gray;
@@ -345,10 +375,6 @@ namespace oslam
         }
 
         bg_mask = ~bg_mask;
-        //! Using floodfill is messy!
-        /* cv::Mat im_floodfill = bg_mask.clone(); */
-        /* cv::floodFill(im_floodfill, cv::Point(0, 0), cv::Scalar(255)); */
-        /* bg_mask = ~(bg_mask | ~im_floodfill); */
         return InstanceImage(bg_mask, BoundingBox({ 0, 0, frame.width_, frame.height_ }), 0, 1);
     }
 
@@ -362,6 +388,7 @@ namespace oslam
         spdlog::debug("Frame instance images size: {}, Frame instance matches size: {}",
                       frame_instance_images.size(),
                       frame_instance_matches.size());
+        //! Should only contain renders from objects in the camera frustum
         for (const auto& render_pair : object_renders)
         {
             const ObjectId& id       = render_pair.first;
@@ -387,7 +414,7 @@ namespace oslam
                 }
             }
         }
-        for(auto match: frame_instance_matches)
+        for (auto match : frame_instance_matches)
             spdlog::debug("Match: {}", match);
         return frame_instance_matches;
     }
@@ -413,8 +440,8 @@ namespace oslam
                 Eigen::Matrix4d T_keyframe_to_world  = map_->getCameraPose(prev_keyframe_timestamp);
                 Eigen::Matrix4d T_object_to_keyframe = T_keyframe_to_world.inverse() * object->getPose();
 
-                addObjectCameraBetweenFactor(object_key, keyframe_timestamps_.back(), T_object_to_keyframe);
                 addObjectValue(object_key, object->getPose());
+                addObjectCameraBetweenFactor(object_key, keyframe_timestamps_.back(), T_object_to_keyframe);
                 spdlog::info("Added object into the map");
                 map_->addObject(std::move(object));
                 objects_created++;
@@ -445,7 +472,7 @@ namespace oslam
     bool Mapper::shouldCreateNewBackground(Timestamp timestamp)
     {
         double vis_ratio = map_->getBackgroundVisibilityRatio(timestamp);
-        spdlog::debug("Visibility Ratio: {}", vis_ratio);
+        spdlog::info("Visibility Ratio: {}", vis_ratio);
 
         if (vis_ratio < 0.2)
             return true;
@@ -463,23 +490,39 @@ namespace oslam
             return nullptr;
         }
         // If the masksize is smaller that 50^2 pixels
-        if (cv::countNonZero(instance_image.maskb_) < 2500)
+        if (cv::countNonZero(instance_image.maskb_) < MASK_AREA_THRESHOLD)
         {
             spdlog::debug("Object {} width score {} is too small. Not added", instance_image.label_, instance_image.score_);
             return nullptr;
         }
 
-        Eigen::Vector2i object_center = Eigen::Vector2i((instance_image.bbox_[0] + instance_image.bbox_[2]) / 2,
-                                                        (instance_image.bbox_[1] + instance_image.bbox_[3]) / 2);
-        spdlog::debug("Object center: {}", object_center);
-        if (!(object_center[0] >= InstanceImage::BORDER_WIDTH &&
-              object_center[0] < frame.width_ - InstanceImage::BORDER_WIDTH &&
-              object_center[1] >= InstanceImage::BORDER_WIDTH &&
-              object_center[1] < frame.height_ - InstanceImage::BORDER_WIDTH))
+        Eigen::Vector2i left_top_point{instance_image.bbox_[0], instance_image.bbox_[1]};
+        Eigen::Vector2i right_bottom_point{instance_image.bbox_[2], instance_image.bbox_[3]};
+        /* spdlog::debug("Object center: {}", object_center); */
+        if (!(left_top_point(0) >= InstanceImage::BORDER_WIDTH &&
+              left_top_point(0) < frame.width_ - InstanceImage::BORDER_WIDTH &&
+              left_top_point(1) >= InstanceImage::BORDER_WIDTH &&
+              left_top_point(1) < frame.height_ - InstanceImage::BORDER_WIDTH))
         {
-            spdlog::debug("Object near corner of the image, Object center: {}", object_center);
+            spdlog::debug("Object near corner of the image, Object left_top_point: {}", left_top_point);
             return nullptr;
         }
+        if (!(right_bottom_point(0) >= InstanceImage::BORDER_WIDTH &&
+              right_bottom_point(0) < frame.width_ - InstanceImage::BORDER_WIDTH &&
+              right_bottom_point(1) >= InstanceImage::BORDER_WIDTH &&
+              right_bottom_point(1) < frame.height_ - InstanceImage::BORDER_WIDTH))
+        {
+            spdlog::debug("Object near corner of the image, Object right_bottom_point: {}", right_bottom_point);
+            return nullptr;
+        }
+        /* if (!(object_center[0] >= InstanceImage::BORDER_WIDTH && */
+        /*       object_center[0] < frame.width_ - InstanceImage::BORDER_WIDTH && */
+        /*       object_center[1] >= InstanceImage::BORDER_WIDTH && */
+        /*       object_center[1] < frame.height_ - InstanceImage::BORDER_WIDTH)) */
+        /* { */
+        /*     spdlog::debug("Object near corner of the image, Object center: {}", object_center); */
+        /*     return nullptr; */
+        /* } */
 
         ObjectId object_id(instance_image.label_, frame.timestamp_, instance_image.bbox_);
 
@@ -516,19 +559,21 @@ namespace oslam
             double geometric_quality = static_cast<double>(intersection_val) / static_cast<double>(union_val);
             if (union_val == 0)
                 geometric_quality = 0.0;
-            quality.emplace_back(geometric_quality, map_->computeObjectMatch(id, iter->feature_), iter-instance_images.begin());
+            quality.emplace_back(
+                geometric_quality, map_->computeObjectMatch(id, iter->feature_), iter - instance_images.begin());
         }
-        std::sort(quality.begin(), quality.end(), [](decltype(quality)::value_type val1, decltype(quality)::value_type val2) {
-            return std::get<1>(val1) < std::get<1>(val2);
-        });
+        std::sort(
+            quality.begin(), quality.end(), [](decltype(quality)::value_type val1, decltype(quality)::value_type val2) {
+                return std::get<1>(val1) < std::get<1>(val2);
+            });
         spdlog::debug("Matching objectID: {}", id);
-        for(auto qual : quality)
+        for (auto qual : quality)
         {
             auto geometric_qual = std::get<0>(qual);
-            auto semantic_qual = std::get<1>(qual);
-            auto idx = std::get<2>(qual);
+            auto semantic_qual  = std::get<1>(qual);
+            auto idx            = std::get<2>(qual);
             spdlog::debug("{}, {}, {}", geometric_qual, semantic_qual, idx);
-            if(!instance_matches.at(idx) && geometric_qual > IOU_OVERLAP_THRESHOLD)
+            if (!instance_matches.at(idx) && geometric_qual > IOU_OVERLAP_THRESHOLD)
             {
                 instance_matches.at(idx) = true;
                 return instance_images.begin() + idx;
@@ -537,58 +582,58 @@ namespace oslam
         return instance_images.end();
     }
 
-inline void Mapper::addPriorFactor(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose)
-{
-    spdlog::trace("Mapper::addPriorFactor");
-    auto camera_key = gtsam::Symbol('c', timestamp);
-    // Prior noise of 0.01 metres (x,y,z) and 0.01 rad in (alpha, beta, gamma)
-    auto prior_noise = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector6::Constant(0.01));
-    pose_graph_.emplace_shared<gtsam::PriorFactor<gtsam::Pose3>>(camera_key, gtsam::Pose3(camera_pose), prior_noise);
-}
+    inline void Mapper::addCameraPriorFactor(const gtsam::Key& camera_key, const Eigen::Matrix4d& camera_pose)
+    {
+        spdlog::trace("Mapper::addCameraPriorFactor");
+        /* auto camera_key = gtsam::Symbol('c', timestamp); */
+        // Prior noise of 0.01 metres (x,y,z) and 0.01 rad in (alpha, beta, gamma)
+        auto prior_noise = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector6::Constant(0.01));
+        pose_graph_.emplace_shared<gtsam::PriorFactor<gtsam::Pose3>>(camera_key, gtsam::Pose3(camera_pose), prior_noise);
+    }
 
-inline void Mapper::addCameraCameraBetweenFactor(const Timestamp& time_source_camera,
-                                                 const Timestamp& time_target_camera,
-                                                 const Eigen::Matrix4d& T_source_camera_to_target_camera)
-{
-    spdlog::trace("Mapper::addCameraCameraBetweenFactor");
-    auto source_camera_key = gtsam::Symbol('c', time_source_camera);
-    auto target_camera_key = gtsam::Symbol('c', time_target_camera);
+    inline void Mapper::addCameraCameraBetweenFactor(const gtsam::Key& source_camera_key,
+                                                     const Timestamp& time_target_camera,
+                                                     const Eigen::Matrix4d& T_source_camera_to_target_camera)
+    {
+        spdlog::trace("Mapper::addCameraCameraBetweenFactor");
+        auto target_camera_key = gtsam::Symbol('c', time_target_camera);
 
-    //! TODO: Obtain noise from ICP
-    auto between_noise = gtsam::noiseModel::Diagonal::Variances(gtsam::Vector6::Constant(1e-3));
-    pose_graph_.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(
-        target_camera_key, source_camera_key, gtsam::Pose3(T_source_camera_to_target_camera), between_noise);
-}
+        //! TODO: Obtain noise from ICP
+        auto between_noise = gtsam::noiseModel::Diagonal::Variances(gtsam::Vector6::Constant(1e-3));
+        pose_graph_.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(
+            target_camera_key, source_camera_key, gtsam::Pose3(T_source_camera_to_target_camera), between_noise);
+    }
 
-inline void Mapper::addObjectCameraBetweenFactor(const gtsam::Key& object_key,
-                                                 const Timestamp& camera_timestamp,
-                                                 const Eigen::Matrix4d& T_object_to_camera)
-{
-    spdlog::trace("Mapper::addObjectCameraBetweenFactor");
-    auto camera_key = gtsam::Symbol('c', camera_timestamp);
+    inline void Mapper::addObjectCameraBetweenFactor(const gtsam::Key& object_key,
+                                                     const Timestamp& camera_timestamp,
+                                                     const Eigen::Matrix4d& T_object_to_camera)
+    {
+        spdlog::trace("Mapper::addObjectCameraBetweenFactor");
+        auto camera_key = gtsam::Symbol('c', camera_timestamp);
 
-    auto between_noise = gtsam::noiseModel::Diagonal::Variances(gtsam::Vector6::Constant(1e-3));
-    pose_graph_.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(
-        camera_key, object_key, gtsam::Pose3(T_object_to_camera), between_noise);
-}
+        auto between_noise = gtsam::noiseModel::Diagonal::Variances(gtsam::Vector6::Constant(1e-3));
+        pose_graph_.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(
+            camera_key, object_key, gtsam::Pose3(T_object_to_camera), between_noise);
+    }
 
-inline void Mapper::addCameraValue(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose)
-{
-    //! TODO: Error checking
-    spdlog::trace("Mapper::addCameraValue");
-    auto camera_key = gtsam::Symbol('c', timestamp);
-    pose_values_.insert(camera_key, gtsam::Pose3(camera_pose));
-}
+    inline gtsam::Key Mapper::addCameraValue(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose)
+    {
+        //! TODO: Error checking
+        spdlog::trace("Mapper::addCameraValue");
+        auto camera_key = gtsam::Symbol('c', timestamp);
+        pose_values_.insert(camera_key, gtsam::Pose3(camera_pose));
+        return camera_key;
+    }
 
-inline void Mapper::addObjectValue(const gtsam::Key& object_key, const Eigen::Matrix4d& object_pose)
-{
-    spdlog::trace("Mapper::addObjectValue");
-    pose_values_.insert(object_key, gtsam::Pose3(object_pose));
-}
+    inline void Mapper::addObjectValue(const gtsam::Key& object_key, const Eigen::Matrix4d& object_pose)
+    {
+        spdlog::trace("Mapper::addObjectValue");
+        pose_values_.insert(object_key, gtsam::Pose3(object_pose));
+    }
 
-void Mapper::shutdownQueues()
-{
-    MISOPipelineModule::shutdownQueues();
-    object_renders_queue_.shutdown();
-}
+    void Mapper::shutdownQueues()
+    {
+        MISOPipelineModule::shutdownQueues();
+        object_renders_queue_.shutdown();
+    }
 }  // namespace oslam

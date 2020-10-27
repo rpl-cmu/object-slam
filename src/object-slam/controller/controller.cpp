@@ -81,6 +81,7 @@ namespace oslam
         data_reader_->registerShutdownCallback([this](Timestamp timestamp) { mapper_->setMaxTimestamp(timestamp); });
         data_reader_->registerShutdownCallback([this](Timestamp timestamp) { display_->setMaxTimestamp(timestamp); });
 
+
         //! DataReader fills the ImageTransporter Input Queue
         auto& transport_frame_queue = transport_input_queue_;
         data_reader_->registerOutputCallback([&transport_frame_queue](const Frame::Ptr& frame) {

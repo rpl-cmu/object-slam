@@ -139,6 +139,8 @@ namespace oslam
 
         open3d::io::ReadIJsonConvertible(intrinsic_path.string(), intrinsic_);
 
+        depth_factor_ = 1000.0f;
+        max_depth_    = 3.0f;
         size_ = rgb_files_.size();
         spdlog::info("Total number of files: {}", rgb_files_.size());
 
@@ -232,6 +234,9 @@ namespace oslam
 
         open3d::io::ReadIJsonConvertible(intrinsic_path.string(), intrinsic_);
 
+        depth_factor_ = 5000.0f;
+        max_depth_ = 7.0f;
+        spdlog::trace("Setting depth factor = 5000.0");
         size_ = rgb_files_.size();
         spdlog::info("Total number of files: {}", rgb_files_.size());
 
@@ -255,19 +260,12 @@ namespace oslam
 
         cv::Mat color      = cv::imread(rgb_files_.at(curr_idx_).string(), cv::IMREAD_COLOR);
         cv::Mat depth      = cv::imread(depth_files_.at(curr_idx_).string(), cv::IMREAD_ANYDEPTH);
-        float depth_factor = 1000.0f;
-        float max_depth    = 3.0f;
-        if (dataset_type_ == DatasetType::TUM)
-        {
-            depth_factor = 5000.0f;
-            spdlog::trace("Setting depth factor = 5000.0");
-        }
 
         // Every 10th frame requires semantic segmentation
         for (const auto &callback : output_callbacks_)
         {
             callback(std::make_unique<Frame>(
-                curr_idx_ + 1, color, depth, intrinsic_, (curr_idx_ % KEYFRAME_LENGTH) == 0, depth_factor, max_depth));
+                curr_idx_ + 1, color, depth, intrinsic_, (curr_idx_ % KEYFRAME_LENGTH) == 0, depth_factor_, max_depth_));
         }
         return true;
     }

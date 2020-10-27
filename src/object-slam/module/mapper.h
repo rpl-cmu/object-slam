@@ -56,10 +56,10 @@ namespace oslam
         void fillRendersQueue(ObjectRenders::UniquePtr renders) { object_renders_queue_.push(std::move(renders)); }
 
        private:
-        constexpr static double SCORE_THRESHOLD           = 0.6;
+        constexpr static double SCORE_THRESHOLD           = 0.7;
         constexpr static double IOU_OVERLAP_THRESHOLD      = 0.2;
         constexpr static float HIGH_IOU_OVERLAP_THRESHOLD = 0.3F;
-        constexpr static int MASK_AREA_THRESHOLD          = 2500;
+        constexpr static int MASK_AREA_THRESHOLD          = 2000;
         constexpr static int BACKGROUND_RESOLUTION        = 256;
         constexpr static int OBJECT_RESOLUTION            = 128;
 
@@ -72,6 +72,7 @@ namespace oslam
 
         void projectInstanceImages(const Timestamp& keyframe_timestamp,
                                    const Frame& frame,
+                                   const Render& background_render,
                                    const InstanceImages& instance_images,
                                    InstanceImages& projected_instance_images);
 
@@ -102,7 +103,7 @@ namespace oslam
                                             const Frame& frame,
                                             const Eigen::Matrix4d& camera_pose);
 
-        void addPriorFactor(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose);
+        void addCameraPriorFactor(const gtsam::Key& camera_key, const Eigen::Matrix4d& camera_pose);
         void addCameraCameraBetweenFactor(const Timestamp& time_source_camera,
                                           const Timestamp& time_target_camera,
                                           const Eigen::Matrix4d& T_source_camera_to_target_camera);
@@ -111,7 +112,7 @@ namespace oslam
                                           const Timestamp& camera_timestamp,
                                           const Eigen::Matrix4d& T_object_to_camera);
 
-        void addCameraValue(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose);
+        gtsam::Key addCameraValue(const Timestamp& timestamp, const Eigen::Matrix4d& camera_pose);
         void addObjectValue(const gtsam::Key& object_key, const Eigen::Matrix4d& object_pose);
 
 

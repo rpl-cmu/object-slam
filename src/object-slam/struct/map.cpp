@@ -95,6 +95,8 @@ namespace oslam
         std::scoped_lock<std::mutex> lock_render_objects(mutex_);
         Renders object_renders;
         object_renders.reserve(id_to_object_.size());
+
+        std::vector<ObjectId> to_delete_objects;
         for (auto& object_pair : id_to_object_)
         {
             const ObjectId& id      = object_pair.first;
@@ -105,7 +107,11 @@ namespace oslam
                 if (object->volume_.device_ == nullptr)
                 {
                     spdlog::debug("Uploading object to GPU");
-                    object->uploadVolumeToGPU();
+                    if(!object->uploadVolumeToGPU())
+                    {
+                        to_delete_objects.push_back(id);
+                        continue;
+                    }
                 }
 
                 //! TODO: Render the objects
@@ -133,10 +139,19 @@ namespace oslam
                 //! Download the object onto CPU memory
                 spdlog::info("Current object ID: {} is not in frustum", id);
                 //! TODO: Make the object value fixed
-
-                object->downloadVolumeToCPU();
+                if(!object->downloadVolumeToCPU())
+                {
+                    to_delete_objects.push_back(id);
+                }
             }
         }
+
+        for (const auto& object_id : to_delete_objects)
+        {
+            spdlog::info("Removing object {}", object_id);
+            removeObject(object_id);
+        }
+
         return object_renders;
     }
 
@@ -196,12 +211,12 @@ namespace oslam
         return object_meshes;
     }
 
-    std::vector<std::uint64_t> Map::deleteBadObjects()
+    std::vector<gtsam::Key> Map::deleteBadObjects()
     {
         std::scoped_lock<std::mutex> lock_delete_objects(mutex_);
         // Evaluate remove objects with very low existence probability
         std::vector<ObjectId> to_delete_objects;
-        std::vector<std::uint64_t> to_delete_object_keys;
+        std::vector<gtsam::Key> to_delete_object_keys;
         for (const auto& object_pair : id_to_object_)
         {
             const ObjectId id           = object_pair.first;
@@ -270,6 +285,25 @@ namespace oslam
 
         return camera_trajectory_.at(camera_timestamp - 1);
     }
+
+    std::vector<gtsam::Key> Map::objectsNotInFrustum(Timestamp timestamp)
+    {
+        const Eigen::Matrix4d& camera_pose = camera_trajectory_.at(timestamp-1);
+        std::vector<gtsam::Key> object_keys_not_in_frustum;
+        for(const auto& object_pair : id_to_object_)
+        {
+            const ObjectId& id = object_pair.first;
+            const TSDFObject::Ptr& object = object_pair.second;
+
+            //!TODO: Check also subvolumes in frustum
+            if(!isObjectInFrustum(object, camera_pose))
+            {
+                object_keys_not_in_frustum.push_back(object->hash(id));
+            }
+        }
+        return object_keys_not_in_frustum;
+    }
+
     bool Map::isObjectInFrustum(const TSDFObject::Ptr& object, const Eigen::Matrix4d& camera_pose)
     {
         auto point_planes = getCameraFrustumPlanes(camera_pose);
@@ -282,8 +316,6 @@ namespace oslam
         int out         = 0;
         int in          = 0;
         auto get_vertex = [&min_point, &max_point](int index) -> Eigen::Vector3d {
-            Eigen::Vector3d vertex = min_point;
-
             double x = max_point(0) - min_point(0);
             double y = max_point(1) - min_point(1);
             double z = max_point(2) - min_point(2);
@@ -336,13 +368,13 @@ namespace oslam
         Eigen::Vector2i top_center(intrinsic.width_ / 2, 0), bottom_center(intrinsic.width_ / 2, intrinsic.height_);
         Eigen::Vector2i left_center(0, intrinsic.height_ / 2), right_center(intrinsic.width_, intrinsic.height_ / 2);
 
-        Eigen::Vector3d near_plane_center = camera_position + camera_z * MIN_DEPTH;
-        Eigen::Vector3d far_plane_center  = camera_position + camera_z * MAX_DEPTH;
+        Eigen::Vector3d near_plane_center = camera_position + camera_z * min_depth_;
+        Eigen::Vector3d far_plane_center  = camera_position + camera_z * max_depth_;
 
-        Eigen::Vector3d near_top_center    = inverse_project_point(top_center, intrinsic, MIN_DEPTH);
-        Eigen::Vector3d near_bottom_center = inverse_project_point(bottom_center, intrinsic, MIN_DEPTH);
-        Eigen::Vector3d near_left_center   = inverse_project_point(left_center, intrinsic, MIN_DEPTH);
-        Eigen::Vector3d near_right_center  = inverse_project_point(right_center, intrinsic, MIN_DEPTH);
+        Eigen::Vector3d near_top_center    = inverse_project_point(top_center, intrinsic, min_depth_);
+        Eigen::Vector3d near_bottom_center = inverse_project_point(bottom_center, intrinsic, min_depth_);
+        Eigen::Vector3d near_left_center   = inverse_project_point(left_center, intrinsic, min_depth_);
+        Eigen::Vector3d near_right_center  = inverse_project_point(right_center, intrinsic, min_depth_);
 
         near_top_center    = Eigen::Affine3d(camera_pose) * near_top_center;
         near_bottom_center = Eigen::Affine3d(camera_pose) * near_bottom_center;
@@ -469,8 +501,18 @@ namespace oslam
             const ObjectId& id            = object_pair.first;
             const TSDFObject::Ptr& object = object_pair.second;
 
+            TSDFObject::ScalableTSDFVolumeCPU key_value;
+            if(object->volume_.device_ != nullptr)
+            {
+                key_value = object->volume_.DownloadVolumes();
+            }
+            else
+            {
+                key_value = object->volume_cpu_.value();
+            }
+
             std::string object_filename = fmt::format("{}/{}.bin", object_path.string(), id);
-            open3d::io::WriteScalableTSDFVolumeToBIN(object_filename, object->volume_, true);
+            open3d::io::WriteScalableTSDFVolumeToBIN(object_filename, object->volume_, key_value, true);
         }
     }
 

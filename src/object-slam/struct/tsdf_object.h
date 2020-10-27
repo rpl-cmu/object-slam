@@ -57,8 +57,8 @@ namespace oslam
                      open3d::cuda::ImageCuda<uchar, 3> &color,
                      const Eigen::Matrix4d &camera_pose);
 
-        void downloadVolumeToCPU();
-        void uploadVolumeToGPU();
+        bool downloadVolumeToCPU();
+        bool uploadVolumeToGPU();
 
         Eigen::Vector3d getMinBound();
         Eigen::Vector3d getMaxBound();
@@ -83,7 +83,7 @@ namespace oslam
        private:
         constexpr static int SUBVOLUME_RES                = 16;  //!< Each subvolume unit has 16^3 voxels
         constexpr static float VOLUME_SIZE_SCALE          = 0.7F;
-        constexpr static float TSDF_TRUNCATION_SCALE      = 5.0F;
+        constexpr static float TSDF_TRUNCATION_SCALE      = 4.0F;
         constexpr static int RETROSPECT_VISIBILITY_THRESH = 5;
         int BUCKET_COUNT_   = 3500;
         int VALUE_CAPACITY_ = 3500;

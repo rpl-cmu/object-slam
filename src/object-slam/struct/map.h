@@ -12,6 +12,7 @@
 #include <mutex>
 #include <Eigen/Eigen>
 #include <gtsam/nonlinear/Values.h>
+#include <gtsam/inference/Key.h>
 
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/operations.hpp>
@@ -80,7 +81,7 @@ namespace oslam
             return id_to_object_.size();
         }
 
-        std::vector<std::uint64_t> deleteBadObjects();
+        std::vector<gtsam::Key> deleteBadObjects();
 
         void incrementExistence(const ObjectId& id);
         void incrementNonExistence(const ObjectId& id);
@@ -90,6 +91,7 @@ namespace oslam
         PointPlanes getCameraFrustumPlanes(const Eigen::Matrix4d& camera_pose) const;
 
         bool isObjectInFrustum(const TSDFObject::Ptr& object, const Eigen::Matrix4d& camera_pose);
+        std::vector<gtsam::Key> objectsNotInFrustum(Timestamp timestamp);
 
         PoseTrajectory getCameraTrajectory() const;
 
@@ -97,9 +99,10 @@ namespace oslam
 
         void shutdown();
 
+        void setMaxDepth(double max_depth) { max_depth_ = max_depth; }
        private:
-        static constexpr double MIN_DEPTH = 0.01;
-        static constexpr double MAX_DEPTH = 4.0;
+        double min_depth_ = 0.01;
+        double max_depth_ = 4.0;
 
         bool removeObject(const ObjectId& id);
         void getObjectBoundingBox(const ObjectId& id, Eigen::Vector3d& min_pt, Eigen::Vector3d& max_pt) const;

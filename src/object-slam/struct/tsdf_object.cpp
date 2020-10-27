@@ -78,8 +78,8 @@ namespace oslam
         // Allocate lower memory since we will create multiple TSDF objects
         if (instance_image.label_ == 0)
         {
-            BUCKET_COUNT_   = 12000;
-            VALUE_CAPACITY_ = 12000;
+            BUCKET_COUNT_   = 15000;
+            VALUE_CAPACITY_ = 15000;
             spdlog::debug("Created new background instance");
         }
         else
@@ -182,29 +182,36 @@ namespace oslam
         return double(visible_blocks) / double(total_blocks);
     }
 
-    void TSDFObject::downloadVolumeToCPU()
+    bool TSDFObject::downloadVolumeToCPU()
     {
         if(!volume_cpu_.has_value())
         {
             volume_cpu_ = std::make_optional(volume_.DownloadVolumes());
+            if(volume_cpu_->first.size() <= 0)
+                return false;
             volume_.Release();
-            return;
+            return true;
         }
         spdlog::trace("{} already downloaded to CPU", id_);
+        return true;
     }
 
-    void TSDFObject::uploadVolumeToGPU()
+    bool TSDFObject::uploadVolumeToGPU()
     {
         assert(volume_cpu_.has_value());
         if (volume_.device_)
         {
             spdlog::warn("Object already on GPU, not uploading");
-            return;
+            return true;
         }
         auto keys    = volume_cpu_->first;
         auto volumes = volume_cpu_->second;
 
         spdlog::info("Length of keys: {}, length of volumes: {}", keys.size(), volumes.size());
+        if(keys.size() <= 0)
+        {
+            return false;
+        }
         cuda::TransformCuda object_pose_cuda;
         object_pose_cuda.FromEigen(pose_);
 
@@ -218,6 +225,7 @@ namespace oslam
         new_volume.UploadVolumes(keys, volumes);
         std::swap(volume_, new_volume);
         volume_cpu_.reset();
+        return true;
     }
 
     Eigen::Vector3d TSDFObject::getMinBound()

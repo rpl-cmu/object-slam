@@ -15,8 +15,8 @@
 #include <string>
 #include <vector>
 
-#include "object-slam/utils/types.h"
 #include "object-slam/struct/frame.h"
+#include "object-slam/utils/types.h"
 
 namespace oslam
 {
@@ -36,7 +36,6 @@ namespace oslam
        public:
         OSLAM_POINTER_TYPEDEFS(DataReader);
         OSLAM_DELETE_COPY_CONSTRUCTORS(DataReader);
-
 
         using FrameCallback    = std::function<void(Frame::Ptr)>;
         using ShutdownCallback = std::function<void(Timestamp)>;
@@ -67,10 +66,12 @@ namespace oslam
         bool readFrame();
 
         constexpr static int KEYFRAME_LENGTH = 5;
-        DatasetType dataset_type_             = DatasetType::INVALID;
-        fs::path root_dir_;                  //!< Root directory of the dataset folder
-        std::size_t size_          = 0;      //!< Number of images color/depth in the dataset folder
-        Timestamp curr_idx_        = 0;      //!< Current index of files being read
+        DatasetType dataset_type_            = DatasetType::INVALID;
+        fs::path root_dir_;              //!< Root directory of the dataset folder
+        std::size_t size_          = 0;  //!< Number of images color/depth in the dataset folder
+        Timestamp curr_idx_        = 0;  //!< Current index of files being read
+        float depth_factor_        = 1000.0f;
+        float max_depth_           = 3.0f;
         bool dataset_parsed_       = false;  //!< is dataset parsed
         std::atomic_bool shutdown_ = false;  //!< Shutdown switch
 

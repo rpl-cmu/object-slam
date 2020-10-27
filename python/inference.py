@@ -27,9 +27,9 @@ def create_cfg(config_file, weights_file, cpu=False):
 
     cfg.MODEL.WEIGHTS = weights_file
 
-    cfg.MODEL.RETINANET.SCORE_THRESH_TEST = 0.6
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.6
-    cfg.MODEL.PANOPTIC_FPN.COMBINE.INSTANCES_CONFIDENCE_THRESH = 0.6
+    cfg.MODEL.RETINANET.SCORE_THRESH_TEST = 0.7
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.7
+    cfg.MODEL.PANOPTIC_FPN.COMBINE.INSTANCES_CONFIDENCE_THRESH = 0.7
 
     if cpu or not torch.cuda.is_available():
         cfg.MODEL.DEVICE = "cpu"

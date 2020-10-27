@@ -56,9 +56,14 @@ namespace oslam
 
             all_renders.emplace_back(map_->getBackgroundId(), Render(color_map, vertex_map, normal_map));
 
-            Render model_render = composeSceneRenders(all_renders);
+            Render model_render = background_render;
+            //! Use compositional render only after 25 frames
+            if(camera_trajectory_3d.size() > 25)
+                model_render = composeSceneRenders(all_renders);
 
             all_renders.pop_back();
+            all_renders.emplace_back(map_->getBackgroundId(), background_render);
+
             RendererOutput::UniquePtr render_output =
                 std::make_unique<RendererOutput>(curr_timestamp_ + 1, model_render, all_renders);
 
