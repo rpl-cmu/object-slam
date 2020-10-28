@@ -83,7 +83,7 @@ namespace oslam
        private:
         constexpr static int SUBVOLUME_RES                = 16;  //!< Each subvolume unit has 16^3 voxels
         constexpr static float VOLUME_SIZE_SCALE          = 0.7F;
-        constexpr static float TSDF_TRUNCATION_SCALE      = 4.0F;
+        constexpr static float TSDF_TRUNCATION_SCALE      = 5.0F;
         constexpr static int RETROSPECT_VISIBILITY_THRESH = 5;
         int BUCKET_COUNT_   = 3500;
         int VALUE_CAPACITY_ = 3500;

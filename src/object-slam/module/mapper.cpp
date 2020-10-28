@@ -514,7 +514,6 @@ namespace oslam
 
         Eigen::Vector2i left_top_point{ instance_image.bbox_[0], instance_image.bbox_[1] };
         Eigen::Vector2i right_bottom_point{ instance_image.bbox_[2], instance_image.bbox_[3] };
-        /* spdlog::debug("Object center: {}", object_center); */
         if (!(left_top_point(0) >= InstanceImage::BORDER_WIDTH &&
               left_top_point(0) < frame.width_ - InstanceImage::BORDER_WIDTH &&
               left_top_point(1) >= InstanceImage::BORDER_WIDTH &&
@@ -531,14 +530,6 @@ namespace oslam
             spdlog::debug("Object near corner of the image, Object right_bottom_point: {}", right_bottom_point);
             return nullptr;
         }
-        /* if (!(object_center[0] >= InstanceImage::BORDER_WIDTH && */
-        /*       object_center[0] < frame.width_ - InstanceImage::BORDER_WIDTH && */
-        /*       object_center[1] >= InstanceImage::BORDER_WIDTH && */
-        /*       object_center[1] < frame.height_ - InstanceImage::BORDER_WIDTH)) */
-        /* { */
-        /*     spdlog::debug("Object near corner of the image, Object center: {}", object_center); */
-        /*     return nullptr; */
-        /* } */
 
         ObjectId object_id(instance_image.label_, frame.timestamp_, instance_image.bbox_);
 

@@ -65,7 +65,7 @@ namespace oslam
         bool parseTum();
         bool readFrame();
 
-        constexpr static int KEYFRAME_LENGTH = 5;
+        constexpr static int KEYFRAME_LENGTH = 10;
         DatasetType dataset_type_            = DatasetType::INVALID;
         fs::path root_dir_;              //!< Root directory of the dataset folder
         std::size_t size_          = 0;  //!< Number of images color/depth in the dataset folder
