@@ -165,6 +165,54 @@ def parse_tum_dataset(args):
     np.savetxt("poses.txt", poses_list)
 
 
+def parse_tum_associate(args):
+    """TODO: Docstring for parse_tum_associate.
+
+    :function: TODO
+    :returns: TODO
+
+    """
+    gt_file = args.gt_pose_file
+    association_file = args.association_file
+    gt_list = read_file_list(gt_file)
+    files_list = read_file_list(association_file)
+    pose_list = read_file_list(args.poses_path)
+
+    num_poses = len(gt_list);
+    print(f"Number of poses in Ground truth trajectory: {num_poses}")
+    matches = associate(gt_list, files_list, 0.0, 0.02)
+    print(len(matches))
+
+    gt_list = list(gt_list.values())
+    pose_list = list(pose_list.values())
+    print(len(pose_list))
+    gt_poses_list, poses_list = [], []
+    for idx1, idx2 in matches:
+        gt_pose = gt_list[idx1]
+        gt_pose = np.array(gt_pose).astype(np.float)
+        t = np.expand_dims(gt_pose[0:3], 1)
+        q = quaternion.as_quat_array(gt_pose[3:])
+        R = quaternion.as_rotation_matrix(q)
+        gt_pose = np.hstack((R, t))
+        gt_poses_list.append(gt_pose.flatten())
+
+        pose = pose_list[idx2]
+        pose = np.array(pose).astype(np.float)
+        t = np.expand_dims(pose[0:3], 1)
+        q = quaternion.as_quat_array(pose[3:])
+        R = quaternion.as_rotation_matrix(q)
+        pose = np.hstack((R, t))
+        poses_list.append(pose.flatten())
+
+    gt_poses_list = np.vstack(gt_poses_list)
+    poses_list = np.vstack(poses_list)
+    print(gt_poses_list.shape)
+    print(poses_list.shape)
+    np.savetxt("gt_poses.txt", gt_poses_list)
+    np.savetxt("poses.txt", poses_list)
+
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Calculate absolute trajectory error for dataset")
@@ -180,6 +228,11 @@ if __name__ == "__main__":
     parser_tum.add_argument("gt_pose_file", help="Path to the ground truth poses txt file")
     parser_tum.add_argument("association_file", help="Path to the synchronized rgbd file list")
     parser_tum.set_defaults(func=parse_tum_dataset)
+
+    parser_tum_associate = subparsers.add_parser("associate_tum")
+    parser_tum_associate.add_argument("gt_pose_file", help="Path to the ground truth poses txt file")
+    parser_tum_associate.add_argument("association_file", help="Path to the synchronized rgbd file list")
+    parser_tum.set_defaults(func=parse_tum_associate)
 
     args = parser.parse_args()
     args.func(args)

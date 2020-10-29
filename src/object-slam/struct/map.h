@@ -110,6 +110,8 @@ namespace oslam
         void writeCameraTrajectory(const fs::path& output_path) const;
         void writeObjectVolumeToBin(const fs::path& output_path) const;
 
+        std::vector<std::pair<ObjectId, TSDFObject::Ptr>> deleted_objects;
+
         TSDFObject::UniquePtr background_volume_;
         PoseTrajectory camera_trajectory_;  //! Sequence of the camera poses traversed in the map
         IdToObjectMap id_to_object_;        //! Map is a hashtable of different objects

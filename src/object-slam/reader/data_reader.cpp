@@ -235,7 +235,7 @@ namespace oslam
         open3d::io::ReadIJsonConvertible(intrinsic_path.string(), intrinsic_);
 
         depth_factor_ = 5000.0f;
-        max_depth_ = 7.0f;
+        max_depth_ = 3.0f;
         spdlog::trace("Setting depth factor = 5000.0");
         size_ = rgb_files_.size();
         spdlog::info("Total number of files: {}", rgb_files_.size());

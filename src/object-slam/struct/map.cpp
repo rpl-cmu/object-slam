@@ -225,7 +225,7 @@ namespace oslam
             double existence_expect = object->getExistExpectation();
             spdlog::debug("{} -> Existence expectation: {}", id, existence_expect);
 
-            if (existence_expect < 0.1)
+            if (existence_expect < 0.2)
             {
                 to_delete_objects.push_back(id);
                 to_delete_object_keys.push_back(object->hash(id));
@@ -234,6 +234,12 @@ namespace oslam
         for (const auto& object_id : to_delete_objects)
         {
             spdlog::info("Removing object {}", object_id);
+            TSDFObject::Ptr object = id_to_object_.at(object_id);
+            double existence_expect = object->getExistExpectation();
+            if(existence_expect > 0.1 && object->downloadVolumeToCPU())
+            {
+                deleted_objects.emplace_back(object_id, object);
+            }
             removeObject(object_id);
         }
 
@@ -511,6 +517,18 @@ namespace oslam
                 key_value = object->volume_cpu_.value();
             }
 
+            std::string object_filename = fmt::format("{}/{}.bin", object_path.string(), id);
+            open3d::io::WriteScalableTSDFVolumeToBIN(object_filename, object->volume_, key_value, true);
+        }
+
+        for (const auto& object_pair : deleted_objects)
+        {
+
+            const ObjectId& id            = object_pair.first;
+            const TSDFObject::Ptr& object = object_pair.second;
+            if(!object->volume_cpu_.has_value())
+                continue;
+            TSDFObject::ScalableTSDFVolumeCPU key_value = object->volume_cpu_.value();
             std::string object_filename = fmt::format("{}/{}.bin", object_path.string(), id);
             open3d::io::WriteScalableTSDFVolumeToBIN(object_filename, object->volume_, key_value, true);
         }
