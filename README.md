@@ -1,21 +1,9 @@
-# Object SLAM
+# Compositional and Scalable Object SLAM
 
-Object SLAM is an implementation of semantic RGB-D SLAM that employs recognized objects in the scene as landmarks. As a RGBD camera moves through a scenecontaining objects, a Deep Neural Network (DNN) produces instance segmentations of the observed objects. These instances are tracked simultaneously and volumetrically integrated in realtime to represent the scene in a sparse object map.
+## Introduction
+Compositional and Scalable Object SLAM is an implementation of semantic RGB-D SLAM that employs recognizable objects in the scene as landmarks. As a RGBD camera moves through a scene containing objects, a pre-trained Deep Neural Network (DNN) (PointRend) produces instance segmentations of the observed objects. These instances are tracked simultaneously and volumetrically integrated in realtime to represent the scene in a sparse object map.
 
-## TODO
-
-- [x] RGBD odometry test using Open3D
-- [x] Refactor datareader to read in separate thread
-- [x] Transfer and run DNN inference on RGB image in parallel
-- [x] Create Pipeline abstract class (similar to Kimera (don't forget license)) to streamline async tasks
-- [x] Run Segmentation as a separate task properly (at lower rate)
-- [x] Implement Frame to SDF Tracking
-- [x] Implement coarse to fine / gaussian pyramid tracking (done for single object)
-- [x] Shutdown system on completion of the dataset
-- [x] Mapping and association into mapper thread
-- [x] Move raycasting into renderer thread
-- [ ] Create posegraph using constant information matrices/constraints
-- [ ] Launch PointRend and C++ program at once, using bash script (low priority)
+<center><img src="misc/object-slam.gif" width="480" style="center"></center>
 
 ## Requirements and Dependencies
 
@@ -36,6 +24,7 @@ The dataset is required to have the following folder structure:
 ├── depth [723 entries]
 └── preprocessed [1446 entries]
 ```
+
 
 
 

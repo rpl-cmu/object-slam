@@ -1,6 +1,5 @@
 include(${PROJECT_SOURCE_DIR}/cmake/Functions.cmake)
 # --------- Dependencies -----------------------------------------
-find_package(GTSAM REQUIRED)
 
 # include Open3D library by downloading if not already present
 include(${PROJECT_SOURCE_DIR}/cmake/Open3D.cmake)
